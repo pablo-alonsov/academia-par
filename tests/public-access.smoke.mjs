@@ -9,7 +9,9 @@ assert.equal(origin, 'https://academia-arp-privada.movingflair1.chatgpt.site');
 const jars = {rocio:'',alejandra:'',teacher:''};
 async function api(profile,path,{body,method=body?'POST':'GET'}={}) {
   const res=await fetch(origin+path,{redirect:'manual',method,headers:{Origin:origin,...(jars[profile]?{Cookie:jars[profile]}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
-  if(res.headers.get('set-cookie')) jars[profile]=res.headers.get('set-cookie').split(';')[0];
+  // Cloudflare can set its own cookies on any response; keep our app token.
+  const accessCookie=res.headers.getSetCookie().find(value=>value.startsWith('arp_access='));
+  if(accessCookie) jars[profile]=accessCookie.split(';')[0];
   let data;try{data=await res.json()}catch{throw Error(`Expected JSON from ${path}; received ${res.status}`)}
   return {status:res.status,data};
 }
