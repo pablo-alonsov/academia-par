@@ -1,0 +1,82 @@
+import { env } from "cloudflare:workers";
+
+export type Profile = "teacher" | "rocio" | "alejandra";
+export const PROFILES = ["teacher", "rocio", "alejandra"] as const;
+const COOKIE = "arp_access";
+export function database(): D1Database {
+  if (!env.DB) throw new HttpError(503, "La base de datos no está disponible.");
+  return env.DB;
+}
+export class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
+export function json(value: unknown, status = 200, extra?: HeadersInit) {
+  return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
+}
+export function fail(error: unknown) {
+  if (error instanceof HttpError) return json({error: error.message}, error.status);
+  console.error("ARP server operation failed", error instanceof Error ? error.message : "unknown");
+  return json({error:"No se pudo guardar. Tus cambios no se han confirmado; vuelve a intentarlo."}, 500);
+}
+export function sameOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, "Origen no autorizado.");
+  if (request.headers.get("sec-fetch-site") === "cross-site") throw new HttpError(403, "Origen no autorizado.");
+}
+export function platformIdentity(request: Request): string | null {
+  const url = new URL(request.url);
+  const identity = request.headers.get("oai-authenticated-user-id");
+  if (!identity && !["localhost","127.0.0.1","[::1]"].includes(url.hostname)) throw new HttpError(401,"Accede primero a la aplicación privada.");
+  return identity;
+}
+function hex(bytes: ArrayBuffer | Uint8Array) { return Array.from(new Uint8Array(bytes)).map(x => x.toString(16).padStart(2,"0")).join(""); }
+export async function digest(value: string) { return hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))); }
+export async function hashPin(pin: string) {
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
+  const result=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:100000},base,256);
+  return `pbkdf2$100000$${hex(salt)}$${hex(result)}`;
+}
+export async function verifyPin(pin: string, stored: string) {
+  const [alg,iterations,salt,expected]=stored.split("$");
+  if (alg!=="pbkdf2" || !/^\d+$/.test(iterations) || !/^[a-f0-9]{32}$/.test(salt) || !/^[a-f0-9]{64}$/.test(expected)) return false;
+  const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
+  const actual=hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new Uint8Array(salt.match(/../g)!.map(x=>parseInt(x,16))),iterations:Number(iterations)},base,256));
+  let different=0; for(let i=0;i<actual.length;i++) different|=actual.charCodeAt(i)^expected.charCodeAt(i);
+  return different===0;
+}
+export async function currentProfile(request: Request): Promise<Profile | null> {
+  const identity=platformIdentity(request);
+  const token=request.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(COOKIE+"="))?.slice(COOKIE.length+1);
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const row=await database().prepare("SELECT profile, expires_at, platform_user_id FROM app_sessions WHERE token_hash = ?").bind(await digest(token)).first<{profile:Profile,expires_at:number,platform_user_id:string|null}>();
+  if (!row || row.expires_at<Date.now() || row.platform_user_id!==identity) return null;
+  return row.profile;
+}
+export async function requireProfile(request: Request) {
+  const profile=await currentProfile(request); if(!profile) throw new HttpError(401,"Elige tu perfil para continuar."); return profile;
+}
+export function teacherOnly(profile: Profile) { if(profile!=="teacher") throw new HttpError(403,"Esta acción es exclusiva del panel docente."); }
+export function cookie(request:Request,token:string,maxAge=43200) {
+  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${new URL(request.url).protocol==="https:"?"; Secure":""}`;
+}
+export async function createSession(request:Request,profile:Profile) {
+  const token=hex(crypto.getRandomValues(new Uint8Array(32)));
+  await database().prepare("INSERT INTO app_sessions (token_hash,profile,expires_at,platform_user_id) VALUES (?,?,?,?)").bind(await digest(token),profile,Date.now()+43200000,platformIdentity(request)).run();
+  return token;
+}
+export async function deleteSession(request:Request) {
+  const token=request.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(COOKIE+"="))?.slice(COOKIE.length+1);
+  if(token) await database().prepare("DELETE FROM app_sessions WHERE token_hash = ?").bind(await digest(token)).run();
+}
+export async function readBody(request:Request): Promise<Record<string, any>> {
+  if(Number(request.headers.get("content-length") || 0)>150000) throw new HttpError(413,"El contenido es demasiado largo.");
+  const raw=await request.text(); if(raw.length>150000) throw new HttpError(413,"El contenido es demasiado largo.");
+  let body; try {body=JSON.parse(raw);} catch {throw new HttpError(400,"El contenido no es válido.");}
+  if(!body || typeof body!=="object" || Array.isArray(body)) throw new HttpError(400,"El contenido no es válido."); return body;
+}
+export function validateStudent(value:unknown): "rocio"|"alejandra" {
+  if(value!=="rocio" && value!=="alejandra") throw new HttpError(400,"Selecciona una alumna válida."); return value;
+}
+export function ownStudent(profile:Profile,value:unknown) {
+  const id=validateStudent(value); if(profile!=="teacher" && profile!==id) throw new HttpError(403,"No puedes acceder a otra alumna."); return id;
+}
+export function cleanString(value:unknown, max=20000) { if(typeof value!=="string" || value.length>max) throw new HttpError(400,"El texto no es válido o es demasiado largo."); return value; }
