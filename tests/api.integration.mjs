@@ -29,7 +29,7 @@ try {
   assert.ok(!pupil.sessions.some(x=>x.id==='qa-session'),'planned session is not a completed diary entry');
   assert.ok(!JSON.stringify(pupil).includes('QA PRIVATE'));
   assert.ok(!pupil.activities.some(x=>Object.hasOwn(x,'answer')||Object.hasOwn(x,'expectedAnswer')));
-  assert.equal((await api('rocio','/api/action',{action:'upsertExam',data:{studentId:'rocio',date:'2026-11-12',title:'Unauthorized'}})).status,403);
+  assert.equal((await api('rocio','/api/action',{action:'updateStudent',data:{id:'rocio',priorities:['Unauthorized']}})).status,403);
   assert.equal((await api('rocio','/api/action',{action:'saveDoubt',data:{studentId:'alejandra',question:'cross profile'}})).status,403);
   const otherActivity=baseline.activities.find(x=>x.suggestedStudentIds?.includes('alejandra'));
   assert.ok(otherActivity);
@@ -64,11 +64,18 @@ try {
   await action('reviewResponse',{id:response.id,feedback:'QA reviewed response'});
   assert.equal((await api('rocio','/api/data')).data.responses.find(x=>x.id===response.id).feedback,'QA reviewed response');
   await action('upsertExam',{id:'qa-exam',studentId:'alejandra',date:'2026-11-12',title:'QA exam',subject:'Matemáticas',topics:'QA fractions'});
+  assert.equal((await api('rocio','/api/action',{action:'upsertExam',data:{id:'qa-rocio-exam',title:'QA own exam',date:'2026-11-13',subject:'Lengua',topics:'QA tildes'}})).status,200);
+  assert.equal((await api('rocio','/api/action',{action:'upsertExam',data:{id:'qa-rocio-exam',title:'QA own exam updated',date:'2026-11-14',topics:'QA updated topics'}})).status,200);
+  assert.equal((await api('rocio','/api/data')).data.exams.find(x=>x.id==='qa-rocio-exam').date,'2026-11-14');
+  assert.equal((await api('rocio','/api/action',{action:'upsertExam',data:{id:'qa-exam',studentId:'rocio',title:'Forbidden takeover'}})).status,403);
+  assert.equal((await api('rocio','/api/action',{action:'deleteExam',data:{id:'qa-exam'}})).status,403);
+  assert.equal((await api('rocio','/api/action',{action:'upsertExam',data:{id:'qa-rocio-exam',studentId:'alejandra'}})).status,403);
+  assert.equal((await api('rocio','/api/action',{action:'deleteExam',data:{id:'qa-rocio-exam'}})).status,200);
   assert.equal((await api('alejandra','/api/auth',{profile:'alejandra'})).status,200);
   assert.ok((await api('alejandra','/api/data')).data.exams.some(x=>x.id==='qa-exam'));
   assert.ok(!(await api('rocio','/api/data')).data.exams.some(x=>x.id==='qa-exam'));
   assert.equal((await api('rocio','/api/auth')).data.profile,'rocio');
-  console.log('PASS equivalent fractional answer, separate review, persistence and scoped exams');
+  console.log('PASS equivalent fractional answer, separate review, persistence, pupil exam CRUD and denied cross-profile exam writes');
 } finally {
   for(const profile of ['teacher','rocio','alejandra']) if(jars[profile])await api(profile,'/api/auth',null,'DELETE');
   // Remove QA records only from local Miniflare SQLite, leaving planned seed data intact.

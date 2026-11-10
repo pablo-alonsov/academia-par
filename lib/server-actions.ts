@@ -25,7 +25,7 @@ function newObservation(skill:RecordData,data:RecordData,sessionId?:string) {
   return {id,studentId:skill.studentId,skillId:skill.id,sessionId,state:skill.state,observation:text(data.observation),evidence:text(data.evidence),nextStep:text(data.nextStep),checkedAt:data.lastCheck || new Date().toISOString(),createdAt:new Date().toISOString()};
 }
 export async function perform(profile:Profile,action:string,data:RecordData) {
-  if(!["submitResponse","saveDoubt","useResource"].includes(action)) teacherOnly(profile);
+  if(!["submitResponse","saveDoubt","useResource","upsertExam","deleteExam"].includes(action)) teacherOnly(profile);
   if(action==="updateStudent") {
     const old=await required("students",validateStudent(data.id));
     const editable=["name","level","color","avatar","priorities","nextStep","mainActivityId"];
@@ -134,11 +134,38 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   }
   if(action==="upsertExam") {
     const old=data.id?await get("exams",data.id):null;
-    const item:RecordData={...old,...data,id:data.id || crypto.randomUUID(),studentId:validateStudent(data.studentId || old?.studentId)};
+    if(profile!=="teacher") {
+      if(old)ownStudent(profile,old.studentId);
+      if(data.studentId!==undefined)ownStudent(profile,data.studentId);
+    }
+    // The shared calendar lets pupils edit their own exams, including ones entered
+    // by the teacher. Pupil writes cannot add or replace teacher metadata.
+    const editable=["id","studentId","title","date","subject","topics"];
+    const supplied=profile==="teacher"?data:Object.fromEntries(editable.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]));
+    const item:RecordData={...old,...supplied,id:data.id || crypto.randomUUID(),studentId:profile==="teacher"?validateStudent(data.studentId || old?.studentId):profile};
+    item.subject=text(item.subject,150);item.topics=text(item.topics);
     title(item);date(item.date);if(item.skillIds) {if(!Array.isArray(item.skillIds)) throw new HttpError(400,"Habilidades no válidas.");for(const id of item.skillIds){const s=await required("skills",id);if(s.studentId!==item.studentId)throw new HttpError(400,"La habilidad pertenece a otra alumna.");}}
-    await put("exams",item);return {id:item.id};
+    if(profile==="teacher")await put("exams",item);
+    else {
+      const now=new Date().toISOString();
+      const payload={...Object.fromEntries(editable.filter(k=>item[k]!==undefined).map(k=>[k,item[k]])),updatedAt:now};
+      // SQL ownership guard also blocks simultaneous chosen-ID collisions or a
+      // concurrent teacher reassignment after the ownership check above.
+      const saved=await database().prepare("INSERT INTO exams (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=json_patch(exams.data,excluded.data),updated_at=excluded.updated_at WHERE exams.student_id=?").bind(item.id,profile,JSON.stringify(payload),now,profile).run();
+      if(saved.meta.changes===0)throw new HttpError(403,"Solo puedes modificar tus propios exámenes.");
+    }
+    return {id:item.id};
   }
-  if(action==="deleteExam") {await required("exams",data.id);await database().prepare("DELETE FROM exams WHERE id=?").bind(data.id).run();return {id:data.id};}
+  if(action==="deleteExam") {
+    const old=await required("exams",data.id);
+    if(profile==="teacher")await database().prepare("DELETE FROM exams WHERE id=?").bind(old.id).run();
+    else {
+      ownStudent(profile,old.studentId);if(data.studentId!==undefined)ownStudent(profile,data.studentId);
+      const removed=await database().prepare("DELETE FROM exams WHERE id=? AND student_id=?").bind(old.id,profile).run();
+      if(removed.meta.changes===0)throw new HttpError(403,"Solo puedes eliminar tus propios exámenes.");
+    }
+    return {id:old.id};
+  }
   if(action==="upsertResource") {
     const old=data.id?await get("resources",data.id):null;
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID()};title(item);
