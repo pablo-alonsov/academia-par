@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Academia ARP",
   description: "Clases, actividades y seguimiento individual.",
+  robots: { index: false, follow: false, noarchive: true },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

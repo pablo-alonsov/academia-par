@@ -21,12 +21,6 @@ export function sameOrigin(request: Request) {
   if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, "Origen no autorizado.");
   if (request.headers.get("sec-fetch-site") === "cross-site") throw new HttpError(403, "Origen no autorizado.");
 }
-export function platformIdentity(request: Request): string | null {
-  const url = new URL(request.url);
-  const identity = request.headers.get("oai-authenticated-user-id");
-  if (!identity && !["localhost","127.0.0.1","[::1]"].includes(url.hostname)) throw new HttpError(401,"Accede primero a la aplicación privada.");
-  return identity;
-}
 function hex(bytes: ArrayBuffer | Uint8Array) { return Array.from(new Uint8Array(bytes)).map(x => x.toString(16).padStart(2,"0")).join(""); }
 export async function digest(value: string) { return hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))); }
 export async function hashPin(pin: string) {
@@ -44,11 +38,10 @@ export async function verifyPin(pin: string, stored: string) {
   return different===0;
 }
 export async function currentProfile(request: Request): Promise<Profile | null> {
-  const identity=platformIdentity(request);
   const token=request.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(COOKIE+"="))?.slice(COOKIE.length+1);
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const row=await database().prepare("SELECT profile, expires_at, platform_user_id FROM app_sessions WHERE token_hash = ?").bind(await digest(token)).first<{profile:Profile,expires_at:number,platform_user_id:string|null}>();
-  if (!row || row.expires_at<Date.now() || row.platform_user_id!==identity) return null;
+  const row=await database().prepare("SELECT profile, expires_at FROM app_sessions WHERE token_hash = ?").bind(await digest(token)).first<{profile:Profile,expires_at:number}>();
+  if (!row || row.expires_at<Date.now() || !PROFILES.includes(row.profile)) return null;
   return row.profile;
 }
 export async function requireProfile(request: Request) {
@@ -60,7 +53,9 @@ export function cookie(request:Request,token:string,maxAge=43200) {
 }
 export async function createSession(request:Request,profile:Profile) {
   const token=hex(crypto.getRandomValues(new Uint8Array(32)));
-  await database().prepare("INSERT INTO app_sessions (token_hash,profile,expires_at,platform_user_id) VALUES (?,?,?,?)").bind(await digest(token),profile,Date.now()+43200000,platformIdentity(request)).run();
+  // Access belongs to this app's random token, independent of external sign-in.
+  // Retain the nullable legacy column so existing database migrations stay intact.
+  await database().prepare("INSERT INTO app_sessions (token_hash,profile,expires_at,platform_user_id) VALUES (?,?,?,NULL)").bind(await digest(token),profile,Date.now()+43200000).run();
   return token;
 }
 export async function deleteSession(request:Request) {

@@ -1,12 +1,12 @@
 # Academia ARP
 
-Academia privada para las clases individuales de Rocío (6.º Primaria) y Alejandra (2.º ESO). React 19, TypeScript y rutas de servidor compatibles con Next.js mediante Vinext; Tailwind/CSS con temas accesibles. Cloudflare D1 conserva los registros y R2 los archivos. Sites aloja la versión privada.
+Academia para las clases individuales de Rocío (6.º Primaria) y Alejandra (2.º ESO). React 19, TypeScript y rutas de servidor compatibles con Next.js mediante Vinext; Tailwind/CSS con temas accesibles. Cloudflare D1 conserva los registros y R2 los archivos. Sites aloja la aplicación con acceso directo por enlace.
 
 ## Acceso
 
-Las alumnas eligen un perfil y entran sin contraseña, por petición expresa. El servidor limita cada sesión a los datos del perfil elegido, pero cualquier visitante admitido puede cambiar entre ambos perfiles: el selector no identifica personalmente a la alumna. El panel docente requiere su contraseña; el servidor guarda solamente su hash, aplica límites a intentos y usa una cookie HttpOnly.
+Las alumnas abren el enlace y eligen su perfil sin contraseña y sin iniciar sesión en ChatGPT, por petición expresa. El servidor limita cada sesión a los datos del perfil elegido, pero cualquier persona con el enlace puede elegir o cambiar entre ambos perfiles: el selector no identifica personalmente a la alumna. El panel docente requiere su contraseña; el servidor guarda solamente su hash, aplica límites a intentos y usa una cookie HttpOnly.
 
-La publicación de Sites es privada para el propietario y exige su acceso de plataforma antes del selector. No se ha abierto el sitio a Internet ni enviado invitaciones. Usarlo desde otra cuenta requiere configurar posteriormente el acceso de Sites; no basta con compartir la URL. En un equipo ya autorizado, las alumnas solo eligen su perfil.
+El acceso de Sites está configurado como público para permitir entrar directamente desde cualquier dispositivo. Las notas privadas y las funciones de gestión requieren la sesión docente validada en el servidor. Las sesiones de aplicación dependen de su token aleatorio y caducidad, no de una cuenta o cabecera de ChatGPT. Se solicita a los buscadores que no indexen la aplicación; esto no sustituye al control de permisos.
 
 La contraseña docente inicial solicitada está configurada como secreto de alojamiento y en el archivo local ignorado `.dev.vars`. No forma parte del código cliente ni del repositorio. El nombre de la variable es `TEACHER_PIN_HASH` (PBKDF2 SHA-256, 100000 iteraciones, sal aleatoria).
 

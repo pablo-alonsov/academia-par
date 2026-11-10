@@ -1,16 +1,16 @@
 import { env } from "cloudflare:workers";
-import { cleanString, cookie, createSession, currentProfile, database, deleteSession, digest, fail, HttpError, json, platformIdentity, PROFILES, readBody, sameOrigin, verifyPin, type Profile } from "@/lib/server-auth";
+import { cleanString, cookie, createSession, currentProfile, database, deleteSession, digest, fail, HttpError, json, PROFILES, readBody, sameOrigin, verifyPin, type Profile } from "@/lib/server-auth";
 import { seed } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
 export async function GET(request:Request) { try { return json({profile:await currentProfile(request)}); } catch(error) {return fail(error);} }
 export async function POST(request:Request) {
   try {
-    sameOrigin(request);platformIdentity(request);
+    sameOrigin(request);
     const {profile,pin}=await readBody(request);
     if(!PROFILES.includes(profile)) throw new HttpError(400,"Selecciona un perfil válido.");
     if(profile==="teacher") {
-      const attemptKey=await digest(`${request.headers.get("cf-connecting-ip") || request.headers.get("oai-authenticated-user-id") || "local"}:teacher`);
+      const attemptKey=await digest(`${request.headers.get("cf-connecting-ip") || "unknown"}:teacher`);
       const now=Date.now();
       // Atomic counter prevents concurrent requests bypassing the attempt window.
       await database().prepare("INSERT INTO login_attempts (key,count,reset_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN reset_at<? THEN 1 ELSE count+1 END,reset_at=CASE WHEN reset_at<? THEN excluded.reset_at ELSE reset_at END").bind(attemptKey,now+600000,now,now).run();
