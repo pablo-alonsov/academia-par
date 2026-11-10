@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Academia ARP · Un paso más, a tu manera",
-  description: "Tu espacio para aprender, practicar y seguir avanzando.",
+  title: "Academia ARP",
+  description: "Clases, actividades y seguimiento individual.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

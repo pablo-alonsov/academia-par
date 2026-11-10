@@ -17,3 +17,7 @@
 @media(max-width:900px){.sidebar{visibility:hidden}.sidebar.is-open{visibility:visible}}
 .summary-card>div.row:last-child button{width:24px;height:28px;display:inline-flex;align-items:center;justify-content:center}
 @media(pointer:coarse){.summary-card>div.row:last-child button{width:44px;height:44px}}
+
+/* Selector de perfiles: presentación informativa sin eslóganes. */
+.profile-card .profile-level{margin-bottom:24px}
+.profile-main h1{margin:18px 0 10px}
