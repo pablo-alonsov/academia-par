@@ -21,7 +21,9 @@ La contraseña docente inicial solicitada está configurada como secreto de aloj
 
 El seguimiento comienza el lunes 16 de noviembre de 2026. Antes de esa fecha, el panel abre en la semana del 16 al 19; las nuevas sesiones tienen fecha del 16 o posterior. Las estadísticas y el diario de seguimiento cuentan desde el inicio acordado; cualquier registro histórico anterior se conserva y se puede consultar desde la ficha docente. No se generan sesiones de forma automática.
 
-El banco contiene 85 actividades, 30 habilidades y 21 recursos, todos planificados. Rocío trabaja potencias y raíces básicas, potencias de 10, acentuación, ortografía e inglés global; Tecnología queda reservada para el segundo trimestre. Alejandra trabaja fracciones, porcentajes, potencias, densidad, concentración, estructura atómica, sintaxis e inglés global. El plan de temas se puede ajustar en la ficha docente.
+El banco contiene 119 actividades, 30 habilidades y 21 recursos, todos planificados. Rocío trabaja potencias y raíces básicas, potencias de 10, acentuación, ortografía e inglés global; Tecnología queda reservada para el segundo trimestre. Alejandra trabaja fracciones, porcentajes, potencias, densidad, concentración, estructura atómica, sintaxis e inglés global. El plan de temas se puede ajustar en la ficha docente.
+
+**Practicar** muestra primero los ejercicios propios, con filtros por asignatura, tema y búsqueda. Se pueden abrir sin asignación previa; entregar una respuesta crea su registro opcional y conserva las ayudas y la autoevaluación. Las tareas asignadas mantienen sus categorías. El selector de contenido permite consultar también recursos externos. En ordenador se amplía la letra de la navegación y del perfil, manteniendo el menú móvil.
 
 Los recursos nuevos son páginas concretas, fichas y simulaciones con una consigna, duración y nivel. Véanse `docs/recursos-rocio.md`, `docs/recursos-alejandra.md` y el catálogo base `docs/recursos.md`. Densidad y Construye un átomo de PhET se ejecutaron; donde el audio o un juego no se ha ejecutado, queda anotado. Las webs externas no transmiten resultados a esta aplicación.
 

@@ -1,8 +1,10 @@
 # Alejandra: ampliación planificada de 2.º de ESO
 
-Comprobación de recursos: **11 de noviembre de 2026**. El módulo `lib/curriculum-alejandra.ts` contiene 23 actividades planificadas (17 de contenido propio, incluidas dos actualizaciones de material inicial, y 6 actividades externas), 7 registros de habilidades y 6 recursos. No añade clases realizadas, entregas, resultados ni avances comprobados.
+Comprobación de recursos: **11 de noviembre de 2026**. El módulo `lib/curriculum-alejandra.ts` contiene 41 actividades planificadas (35 de contenido propio, incluidas dos actualizaciones de material inicial, y 6 actividades externas), 7 registros de habilidades y 6 recursos. No añade clases realizadas, entregas, resultados ni avances comprobados.
 
 Las prioridades incluyen fracciones, porcentajes y potencias; densidad, concentración y estructura atómica; sintaxis con el método de su profesora; e inglés con una observación inicial breve de comprensión y expresión. A1–A2 es una referencia de material, no una valoración del nivel real de Alejandra.
+
+Se añadieron 18 ejercicios propios con identificadores `a-extra-*`: 12 autocorregibles (fracción, número, selección o una palabra exacta) y 6 abiertos con revisión docente. Cada uno tiene tres pistas, solución privada, materiales y un criterio de comprobación. Esta ampliación no añade recursos externos ni presupone que los ejercicios estén asignados o realizados. En las respuestas numéricas se especifica la unidad y se solicita el valor solo; el procedimiento y las unidades escritas en papel siguen requiriendo revisión docente.
 
 ## Recursos seleccionados y alcance de la comprobación
 

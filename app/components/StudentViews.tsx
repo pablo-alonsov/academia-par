@@ -34,6 +34,8 @@ export default function StudentViews({ data, profile, tab, act, notify }: Props)
   const [subject, setSubject] = useState("");
   const [search, setSearch] = useState("");
   const [practiceFilter, setPracticeFilter] = useState("Todas");
+  const [practiceSkill, setPracticeSkill] = useState("");
+  const [practiceKind, setPracticeKind] = useState("Ejercicios");
   const [resourceType, setResourceType] = useState("");
   const [resourceSkill, setResourceSkill] = useState("");
   const [maxDuration, setMaxDuration] = useState("");
@@ -61,7 +63,7 @@ export default function StudentViews({ data, profile, tab, act, notify }: Props)
     document.addEventListener("keydown", onKey);
     return () => { document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", onKey); previous?.focus(); };
   }, [openResource]);
-  useEffect(() => { setActivity(null); setAssignment(null); setSession(null); setSubject(""); setSearch(""); setOpenResource(null); }, [tab, profile]);
+  useEffect(() => { setActivity(null); setAssignment(null); setSession(null); setSubject(""); setSearch(""); setPracticeSkill(""); setPracticeKind("Ejercicios"); setPracticeFilter("Todas"); setOpenResource(null); }, [tab, profile]);
   const openActivity = (a: Item, as?: Item) => { setActivity(a); setAssignment(as || null); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const subjects = [...new Set([...skills, ...activities, ...resources].map(a => a.subject).filter(Boolean))] as string[];
   const latest = sessions[0];
@@ -69,6 +71,12 @@ export default function StudentViews({ data, profile, tab, act, notify }: Props)
   const main = mainAssignment ? activities.find(a => a.id === mainAssignment.activityId) : null;
   const verified = skills.filter(s => isTrackingDate(s.lastCheck) && ["Lo hago sola", "Lo he recordado días después"].includes(s.state)).sort((a, b) => (b.lastCheck || "").localeCompare(a.lastCheck || ""))[0];
   const myExams: Item[] = (data.exams || []).filter((e: Item) => e.studentId === profile && e.date >= new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" })).sort((a: Item, b: Item) => a.date.localeCompare(b.date));
+  const availableActivities = activities.filter(a => (a.studentId ? a.studentId === profile : !a.suggestedStudentIds?.length || a.suggestedStudentIds.includes(profile)) && !assignments.some(as => as.activityId === a.id));
+  const practiceSubjects = [...new Set(availableActivities.map(a => a.subject).filter(Boolean))].sort((a,b) => a.localeCompare(b,"es"));
+  const practiceSkills = skills.filter(s => (!subject || s.subject === subject) && availableActivities.some(a => a.skillId === s.id));
+  const searchText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim();
+  const practiceResults = availableActivities.filter(a => (!subject || a.subject === subject) && (!practiceSkill || a.skillId === practiceSkill) && (practiceKind === "Todo" || (practiceKind === "Recursos externos" ? a.type === "external" : a.type !== "external")) && (!searchText(search) || searchText([a.title,a.objective,a.instructions,a.subject,skills.find(s => s.id === a.skillId)?.title].filter(Boolean).join(" ")).includes(searchText(search))));
+  const assignedPractice = assignments.filter(a => practiceFilter === "Todas" || a.category === practiceFilter);
 
   const saveQuestion = async (event: React.FormEvent) => { event.preventDefault(); if (!question.trim()) return; setBusy(true); try { await act("saveDoubt", { studentId: profile, question: question.trim() }); setQuestion(""); setAsking(false); notify("Pregunta guardada."); } catch (e: any) { notify(e.message || "No se ha podido guardar la duda."); } finally { setBusy(false); } };
   const uploadResource = async (file?: File) => { if (!file) return; setResourceUploading(true); try { const body = new FormData(); body.set("file", file); body.set("studentId", profile); const r = await fetch("/api/files", { method: "POST", body }); const result: any = await r.json(); if (!r.ok) throw new Error(result.error || "No se ha podido adjuntar el archivo."); setResourceFiles(v => [...v, result.id]); notify("Archivo adjuntado."); } catch (e: any) { notify(e.message); } finally { setResourceUploading(false); } };
@@ -94,10 +102,19 @@ export default function StudentViews({ data, profile, tab, act, notify }: Props)
 
     {tab === "Practicar" && <>
       <div className="sv-section-intro"><span className="sv-icon-box blue"><PencilLine size={23}/></span><div><h2>Practicar</h2><p>Selecciona una actividad. Las pistas disponibles no tienen penalización.</p></div></div>
-      <div className="sv-chip-tabs" aria-label="Filtrar actividades">{["Todas", "Para hacer en clase", "Para casa", "Opcionales"].map(f => <button className={practiceFilter === f ? "active" : ""} key={f} onClick={() => setPracticeFilter(f)}>{f}</button>)}</div>
-      <div className="grid-2">{assignments.filter(a => practiceFilter === "Todas" || a.category === practiceFilter).map(a => { const ac = activities.find(x => x.id === a.activityId); return ac && <ActivityCard key={a.id} activity={ac} assignment={a} response={responses.filter(r => r.assignmentId === a.id).sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""))[0]} onClick={() => openActivity(ac, a)}/>; })}</div>
-      {assignments.filter(a => practiceFilter === "Todas" || a.category === practiceFilter).length === 0 && <Empty icon={PencilLine} title="Sin actividades asignadas">El docente puede asignar actividades para clase o casa. También puedes consultar las actividades opcionales.</Empty>}
-      {(practiceFilter === "Todas" || practiceFilter === "Opcionales") && <section className="sv-stack"><div className="sv-section-heading"><div><div className="eyebrow">ACTIVIDADES DISPONIBLES</div><h3>Actividades opcionales</h3><p className="muted">Selecciona una actividad opcional.</p></div></div><div className="sv-filter-row"><label className="sv-select-label">Asignatura<select value={subject} onChange={e => setSubject(e.target.value)}><option value="">Todas</option>{subjects.map(s => <option key={s}>{s}</option>)}</select></label><label className="sv-search"><Search size={17}/><input aria-label="Buscar actividad" placeholder="Buscar una actividad…" value={search} onChange={e => setSearch(e.target.value)}/></label></div><div className="grid-2">{activities.filter(a => (!a.suggestedStudentIds?.length || a.suggestedStudentIds.includes(profile)) && !assignments.some(as => as.activityId === a.id) && (!subject || a.subject === subject) && (!search || `${a.title} ${a.objective}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))).map(a => <ActivityCard key={a.id} activity={a} onClick={() => openActivity(a)}/>)}</div></section>}
+      {assignments.length > 0 && <section className="sv-stack sv-assigned-practice" aria-labelledby="assigned-practice-title"><h3 id="assigned-practice-title">Actividades asignadas</h3><div className="sv-chip-tabs" aria-label="Filtrar actividades asignadas">{["Todas", "Para hacer en clase", "Para casa", "Opcionales"].map(f => <button type="button" className={practiceFilter === f ? "active" : ""} aria-pressed={practiceFilter === f} key={f} onClick={() => setPracticeFilter(f)}>{f}</button>)}</div><div className="grid-2">{assignedPractice.map(a => { const ac = activities.find(x => x.id === a.activityId); return ac && <ActivityCard key={a.id} activity={ac} assignment={a} response={responses.filter(r => r.assignmentId === a.id).sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""))[0]} onClick={() => openActivity(ac, a)}/>; })}</div>{assignedPractice.length === 0 && <Empty icon={PencilLine} title="Sin actividades en esta categoría">Elige otra categoría para consultar las actividades asignadas.</Empty>}</section>}
+      <section className="sv-stack sv-practice-bank" aria-labelledby="practice-bank-title">
+        <div className="sv-section-heading"><div><h3 id="practice-bank-title">Ejercicios disponibles</h3><p className="muted">Elige una asignatura y un tema para encontrar qué practicar.</p></div></div>
+        <div className="sv-chip-tabs sv-practice-kind" role="group" aria-label="Contenido disponible">{["Ejercicios", "Recursos externos", "Todo"].map(kind => <button type="button" key={kind} className={practiceKind === kind ? "active" : ""} aria-pressed={practiceKind === kind} onClick={() => setPracticeKind(kind)}>{kind}</button>)}</div>
+        <div className="sv-practice-filters">
+          <label className="sv-select-label">Asignatura<select value={subject} onChange={e => { setSubject(e.target.value); setPracticeSkill(""); }}><option value="">Todas las asignaturas</option>{practiceSubjects.map(s => <option key={s}>{s}</option>)}</select></label>
+          <label className="sv-select-label">Tema<select value={practiceSkill} onChange={e => setPracticeSkill(e.target.value)}><option value="">Todos los temas</option>{practiceSkills.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></label>
+          <label className="sv-select-label sv-practice-search">Buscar<span className="sv-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar ejercicios disponibles" placeholder="Título, contenido o tema…" value={search} onChange={e => setSearch(e.target.value)}/></span></label>
+        </div>
+        <p className="muted sv-small sv-practice-count" role="status" aria-live="polite">{practiceResults.length} {practiceKind === "Recursos externos" ? "recursos externos" : practiceKind === "Todo" ? "actividades" : "ejercicios"} disponibles</p>
+        {practiceResults.length > 0 ? <div className="grid-2">{practiceResults.map(a => <ActivityCard key={a.id} activity={a} onClick={() => openActivity(a)}/>)}</div> : <Empty icon={Search} title="Sin resultados con estos filtros">Cambia la asignatura, el tema o la búsqueda para ver otras actividades.<br/><button type="button" className="btn secondary sv-practice-clear" onClick={() => { setSubject(""); setPracticeSkill(""); setSearch(""); setPracticeKind("Ejercicios"); }}>Limpiar filtros</button></Empty>}
+      </section>
+      {assignments.length === 0 && <p className="sv-practice-assignment-note"><BookOpen size={18} aria-hidden="true"/><span>No tienes actividades asignadas para clase o casa. Puedes practicar con los ejercicios disponibles.</span></p>}
     </>}
 
     {tab === "Mis clases" && <>

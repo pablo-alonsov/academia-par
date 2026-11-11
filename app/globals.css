@@ -64,3 +64,27 @@
 @media(max-width:600px){.study-plan-grid{grid-template-columns:1fr}.tracking-start-note{align-items:flex-start}.tracking-start-note strong{font-size:11px}}
 
 .skill-reference{margin-top:14px;font-size:12px}.skill-reference summary{cursor:pointer;min-height:44px;padding:10px 0;color:var(--primary);font-weight:600}.skill-reference p{line-height:1.8;color:var(--muted)}
+
+/* Desktop navigation stays readable without changing the mobile drawer. */
+@media(min-width:901px){
+  .app-shell:not(.is-collapsed){grid-template-columns:260px minmax(0,1fr)}
+  .sidebar .brand{font-size:19px}
+  .workspace-label{font-size:11px;letter-spacing:.1em}
+  .nav-item{font-size:15px;line-height:1.45;min-height:50px}
+  .nav-item svg{width:21px;height:21px}
+  .collapse-btn{font-size:13px}
+  .breadcrumb{font-size:14px;gap:10px}
+  .privacy-pill{font-size:12px}
+  .user-chip strong{font-size:15px}
+  .user-chip small{font-size:12px}
+  .profile-menu-heading strong{font-size:15px}
+  .profile-menu-heading small{font-size:12px}
+  .profile-menu-popup>button{font-size:14px}
+  .app-shell:not(.is-collapsed) .menu-guide{left:282px}
+}
+@media(min-width:901px) and (max-width:1100px){
+  .topbar{padding-inline:22px;gap:10px}
+  .topbar-actions{gap:8px}
+  .topbar .privacy-pill{display:none}
+  .user-chip{padding-left:12px}
+}

@@ -11,7 +11,9 @@ La ampliación utiliza las habilidades nuevas `r-potencias`, `r-raices`, `r-pote
 - **Inglés:** lectura, escucha, escritura y conversación breves sobre rutinas y vocabulario cotidiano; presente simple, formas básicas de be y have y preguntas. Las destrezas se observan por separado, sin asignar un nivel MCER por su curso ni por una sola actividad.
 - **Tecnología:** prevista para el segundo trimestre. El tema, el proyecto, los materiales y cualquier fecha siguen pendientes de confirmar con el colegio. Se reserva la habilidad, sin añadir todavía actividades ni anticipar un proyecto.
 
-Hay **16 actividades propias y 7 actividades externas**, cada una con objetivo, duración aproximada, materiales, pistas graduadas y forma de revisión. Las respuestas numéricas y las elecciones cerradas se pueden corregir automáticamente. La única nueva actividad de texto con comprobación exacta es «autobús», que conserva la tilde como parte de la respuesta. Los procedimientos, la escritura y las explicaciones requieren revisión docente.
+Hay **32 actividades propias y 7 actividades externas**, cada una con objetivo, duración aproximada, materiales, pistas graduadas y forma de revisión. Las respuestas numéricas y las elecciones cerradas se pueden corregir automáticamente. Las actividades de texto con comprobación exacta («autobús» y «césped») conservan las tildes como parte de la respuesta. Los procedimientos, la escritura y las explicaciones requieren revisión docente.
+
+La segunda incorporación añade 16 ejercicios breves: siete de potencias, raíces y valor posicional; cinco de sílaba tónica, tildes y ortografía contextual (b/v y h); y cuatro de inglés cotidiano. Catorce tienen respuesta cerrada comprobable y dos requieren revisión docente. Son ejercicios propios dentro de la academia, sin nuevos enlaces, habilidades, asignaciones ni resultados. Tecnología mantiene únicamente su reserva para el segundo trimestre.
 
 ## Recursos comprobados
 
