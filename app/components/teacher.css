@@ -1,0 +1,122 @@
+/* Teacher-only layout, including the class applied to portaled dialog panels. */
+.teacher-views{min-width:0;overflow-wrap:anywhere}
+.teacher-views .teacher-page-title:focus{outline:2px solid var(--primary);outline-offset:5px;border-radius:3px}
+.teacher-views :where(.card,.stack,.grid-2,.grid-3,.form-grid,.dashboard-columns,.session-workspace,.bank-grid,.summary-grid,.page-heading,.card-head,.row,.session-info,.bank-bottom,.bank-meta,.field){min-width:0}
+.teacher-views :where(h1,h2,h3,p,strong,small,.badge,.detail-text,.private-label,.stat-label,.stat-meta,.teacher-field-label){overflow-wrap:anywhere}
+.teacher-views :where(.page-heading,.card-head){flex-wrap:wrap}
+.teacher-views .page-heading>div:first-child{flex:1 1 260px}
+.teacher-views .page-heading>.btn{flex-shrink:0}
+.teacher-views .card-head>div{min-width:0}
+.teacher-views .card-head>.row{flex-wrap:wrap}
+.teacher-views :where(button,.btn,.icon-btn,.segmented button){min-height:44px}
+.teacher-views .segmented button{min-height:44px;min-width:44px}
+.teacher-views .icon-btn{min-width:44px;width:44px;height:44px}
+.teacher-views .btn{max-width:100%;line-height:1.5;text-align:center}
+.teacher-views :where(button,a,input,select,textarea,summary):focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.teacher-views :where(input,select,textarea){min-width:0;max-width:100%;width:100%;min-height:44px}
+.teacher-views :where(input[type=date],input[type=number]){min-inline-size:0}
+.teacher-views select{text-overflow:ellipsis}
+.teacher-views textarea{line-height:1.65;overflow-wrap:anywhere;resize:vertical}
+.teacher-views input[type=checkbox]{width:18px;min-width:18px;min-height:18px;flex:0 0 18px;margin:0}
+.teacher-views label.row{min-height:44px;align-items:center;line-height:1.6;gap:10px}
+.teacher-views .field>small{line-height:1.65}
+.teacher-views :where(.field,.teacher-field-label){line-height:1.55}
+.teacher-views summary{min-height:44px;align-content:center;line-height:1.6;padding-block:10px;cursor:pointer}
+.teacher-views summary:focus-visible{border-radius:5px}
+.teacher-views .summary-card{display:flex;flex-direction:column}
+.teacher-views .summary-card>.row:first-child{align-items:flex-start}
+.teacher-views .summary-card .icon-tile{flex-shrink:0}
+.teacher-views .teacher-widget-controls{justify-content:flex-end;gap:4px;margin-top:auto;padding-top:9px}
+.teacher-views .teacher-widget-controls .icon-btn:disabled{cursor:default}
+.teacher-views .session-item{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:12px 14px}
+.teacher-views .session-item>.avatar{margin-top:5px}
+.teacher-views .session-item>.row:last-child{grid-column:2;justify-content:flex-end;margin-left:0}
+.teacher-views .session-info>.row{flex-wrap:wrap;gap:6px 10px;align-items:flex-start}
+.teacher-views .session-item .btn{min-height:44px}
+.teacher-views .list-item.row{flex-wrap:wrap;align-items:flex-start;gap:12px}
+.teacher-views .list-item.row>div{min-width:0;flex:1 1 200px}
+.teacher-views .list-item>.row{flex-wrap:wrap;align-items:flex-start}
+.teacher-views .list-item>.row>div{min-width:0;flex:1 1 140px}
+.teacher-views .list-item>.row>.exam-date{flex-shrink:0}
+.teacher-views .priority-list .badge{white-space:normal}
+.teacher-views .student-card-top>div{min-width:0}
+.teacher-views .filters{align-items:stretch}
+.teacher-views .teacher-search{flex:1 1 230px;min-width:0}
+.teacher-views .teacher-search input{min-width:0;flex:1}
+.teacher-views .filters>select{flex:0 1 190px;min-width:0;max-width:100%}
+.teacher-views .bank-card>.row:first-child{flex-wrap:wrap;gap:8px;align-items:flex-start}
+.teacher-views .bank-card>.row:first-child>.small{margin-left:auto;white-space:nowrap}
+.teacher-views .bank-meta{flex-wrap:wrap;gap:4px 10px;line-height:1.65}
+.teacher-views .bank-bottom{flex-wrap:wrap;gap:8px 10px;align-items:center}
+.teacher-views .bank-bottom>.row{margin-left:auto;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.teacher-views .bank-bottom .btn{min-height:44px}
+.teacher-views .skill-row>.row{gap:12px;align-items:flex-start}
+.teacher-views .skill-row>.row>div{min-width:0}
+.teacher-views .skill-row>.row>.small{flex:1 1 200px}
+.teacher-views .skill-row>.row>.row{flex-wrap:wrap;justify-content:flex-end}
+.teacher-views .private-label{align-items:flex-start;line-height:1.65}
+.teacher-views .private-label svg{margin-top:2px}
+.teacher-views .save-state{min-height:44px;line-height:1.5}
+.teacher-views .page-heading>.row.wrap{justify-content:flex-end;flex:0 1 auto;max-width:100%;gap:8px}
+.teacher-views .session-workspace>.stack{min-width:0}
+.teacher-views .session-workspace .card-head>.row{align-items:flex-start;flex:1 1 220px}
+.teacher-views .session-workspace .card-head>.row>div{min-width:0}
+.teacher-views .session-workspace .list-item>a{min-height:44px;display:inline-flex;align-items:center;gap:7px;max-width:100%;min-width:0;text-decoration:underline;text-underline-offset:3px}
+.teacher-views .flow-pills{gap:6px}
+.teacher-views .flow-pills span{line-height:1.6;white-space:normal}
+.teacher-views .shared-preview{white-space:pre-wrap;overflow-wrap:anywhere}
+.teacher-views .error-text:empty{display:none}
+.teacher-dialog .arp-dialog-header h2{min-width:0;overflow-wrap:anywhere}
+.teacher-dialog :where(form,fieldset,.arp-dialog-content){min-width:0;max-width:100%}
+.teacher-dialog .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.teacher-dialog form>.row:last-child,.teacher-dialog fieldset>.row:last-child{flex-wrap:wrap;gap:10px}
+.teacher-dialog .field>.row{flex-wrap:wrap;gap:10px 20px}
+.teacher-dialog .segmented{display:flex;width:fit-content;max-width:100%;gap:4px}
+.teacher-dialog .segmented button{flex:1 1 auto;white-space:normal;text-align:center}
+.teacher-dialog .evidence-item a,.teacher-dialog a:not(.btn):not(.icon-btn){display:inline-flex;align-items:center;gap:7px;min-height:44px;max-width:100%;text-decoration:underline;text-underline-offset:3px}
+.teacher-dialog .list-item>.btn{flex-shrink:0}
+
+@media(min-width:1280px){
+  .teacher-views .session-item{grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
+  .teacher-views .session-item>.row:last-child{grid-column:auto;justify-content:flex-end}
+}
+@media(max-width:1100px){
+  .teacher-views .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .teacher-views :where(.dashboard-columns,.session-workspace){grid-template-columns:minmax(0,1fr)}
+  .teacher-views .page-heading>.row.wrap{justify-content:flex-start}
+}
+@media(max-width:767px){
+  .teacher-views :where(.grid-2,.bank-grid){grid-template-columns:minmax(0,1fr)}
+  .teacher-dialog .form-grid{grid-template-columns:minmax(0,1fr)}
+  .teacher-dialog .span-2{grid-column:auto}
+  .teacher-views .student-card-top .avatar.large{width:70px;height:70px;font-size:32px}
+  .teacher-views .teacher-search{flex-basis:100%}
+  .teacher-views .filters>select{flex:1 1 140px}
+  .teacher-views .page-heading>.btn{width:100%}
+  .teacher-views :where(input,select,textarea){font-size:16px}
+  .teacher-views input[type=file]{font-size:12px;padding:8px;line-height:1.6}
+  .teacher-dialog form>.row:last-child>.btn,.teacher-dialog fieldset>.row:last-child>.btn{flex:1 1 160px}
+  .teacher-views .page-heading>.row.wrap>.btn{flex:1 1 140px}
+  .teacher-views .page-heading>.row.wrap>.save-state{flex-basis:100%}
+}
+@media(max-width:420px){
+  .teacher-views .summary-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  .teacher-views .summary-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:16px}
+  .teacher-views .summary-card>.row:first-child{grid-column:1/-1}
+  .teacher-views .summary-card .stat-value{grid-column:1;margin:3px 0}
+  .teacher-views .summary-card .stat-meta{grid-column:1;grid-row:3;line-height:1.6}
+  .teacher-views .teacher-widget-controls{grid-column:2;grid-row:2/4;align-self:center;margin:0;padding:0;gap:0}
+  .teacher-views .week-days{gap:5px}
+  .teacher-views .week-day{min-width:0;padding:9px 2px}
+  .teacher-views .card-head>.row{width:100%;justify-content:flex-start}
+  .teacher-views .session-item{gap:10px;padding:12px;grid-template-columns:auto minmax(0,1fr)}
+  .teacher-views .session-item>.row:last-child{grid-column:1/-1;width:100%}
+  .teacher-views .session-item>.row:last-child>.btn{flex:1}
+  .teacher-views .bank-bottom>.btn{flex:1 1 100%}
+  .teacher-views .bank-bottom>.row{width:100%;justify-content:flex-end}
+  .teacher-views .student-card-top{gap:14px;flex-wrap:wrap}
+  .teacher-views .student-card-top .avatar.large{width:60px;height:60px;font-size:28px}
+  .teacher-dialog .segmented{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .teacher-views .skill-row>.row>.row{width:100%;justify-content:flex-start}
+  .teacher-views .skill-row>.row>.row>.btn{flex:1 1 120px}
+}

@@ -56,4 +56,6 @@ Incluye preparación, desarrollo y cierre de sesiones, mapa editable, diario, bi
 
 El diseño contempla foco visible, áreas interactivas amplias, contraste, teclado, modales accesibles y movimiento reducido. La validación realizada no equivale a una auditoría formal completa de WCAG 2.1 AA.
 
+La revisión de distribución, ventanas, exámenes y teclado en tamaños de móvil, tableta y PC está documentada en `docs/validacion-responsive.md`. En móvil la ruta «Mi academia · página» ocupa su propia fila. Las ventanas se montan fuera de las páginas animadas y conservan desplazamiento y foco dentro del viewport.
+
 El cambio de perfil está disponible en el menú lateral y en el desplegable del avatar superior. La ayuda del menú se muestra una vez por perfil y navegador, se cierra automáticamente tras unos 12 segundos (se pausa al leerla con el puntero o el teclado), puede cerrarse manualmente y puede volver a abrirse desde el avatar. Las transiciones respetan la preferencia de movimiento reducido.

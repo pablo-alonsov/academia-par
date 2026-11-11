@@ -26,8 +26,8 @@
 .app-shell{transition:grid-template-columns .36s cubic-bezier(.22,1,.36,1)}
 .topbar{position:relative;z-index:30}
 .navigation-toggle{display:inline-flex}
-.page-view{animation:arp-page-enter .52s cubic-bezier(.22,1,.36,1) both}
-@keyframes arp-page-enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.page-view{animation:arp-page-enter .52s cubic-bezier(.22,1,.36,1) backwards}
+@keyframes arp-page-enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes arp-panel-enter{from{opacity:0;transform:translateY(-9px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes arp-fade-in{from{opacity:0}to{opacity:1}}
 .modal-backdrop,.drawer-backdrop{animation:arp-fade-in .28s ease both}
@@ -87,4 +87,50 @@
   .topbar-actions{gap:8px}
   .topbar .privacy-pill{display:none}
   .user-chip{padding-left:12px}
+}
+
+/* Shared layout constraints: controls and long content must fit their column. */
+.workspace,.main-content,.page-view,.card,.field,.form-grid>*{min-width:0}
+.main-content{width:100%}
+.main-content:focus{outline:none}
+.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.field input,.field select,.field textarea{min-width:0;max-width:100%}
+input:not([type=checkbox]):not([type=radio]),select,textarea{border-color:#7d899c}
+:root[data-theme=dark] input:not([type=checkbox]):not([type=radio]),:root[data-theme=dark] select,:root[data-theme=dark] textarea{border-color:#8393ad}
+input[type=date],input[type=time],input[type=datetime-local]{min-width:0}
+.card h1,.card h2,.card h3,.detail-text,.shared-preview,.cal-preline{overflow-wrap:anywhere}
+.sidebar{overflow-y:auto;overscroll-behavior:contain}
+.brand{min-height:44px}
+.skip-link{min-height:44px;display:inline-flex;align-items:center}
+.topbar>.row,.breadcrumb{min-width:0}
+.breadcrumb>span{white-space:nowrap}
+.breadcrumb strong{overflow-wrap:anywhere}
+.arp-modal-backdrop.modal-backdrop:has(.pending-drawer){justify-content:flex-end;padding:0}
+.arp-dialog.modal.pending-drawer{width:min(410px,100%);height:100%;max-height:100%;max-width:100vw;border-radius:0;padding:0;overscroll-behavior:contain}
+.pending-drawer .arp-dialog-content>.card{margin:20px 0}
+:root[data-theme=dark] .error-text{color:#fda4af}
+.student-views .sv-detail-heading h2[tabindex="-1"]:focus{outline:2px solid var(--primary);outline-offset:5px;border-radius:4px}
+@media(max-width:900px){
+  .breadcrumb{font-size:14px}
+  .app-shell input:not([type=checkbox]):not([type=radio]),.app-shell select,.app-shell textarea,.modal input:not([type=checkbox]):not([type=radio]),.modal select,.modal textarea{font-size:16px}
+}
+@media(max-width:600px){
+  .topbar{display:grid;grid-template-columns:44px minmax(0,1fr);height:auto;min-height:104px;padding:9px 14px 11px;gap:5px 10px}
+  .topbar>.row{display:contents}
+  .topbar .navigation-toggle{grid-column:1;grid-row:1}
+  .topbar-actions{grid-column:2;grid-row:1;justify-self:end;gap:6px;min-width:0}
+  .topbar .breadcrumb{grid-column:1/-1;grid-row:2;font-size:14px;line-height:1.5;gap:8px;padding:0 2px;align-items:baseline}
+  .topbar .breadcrumb>strong{max-width:none;min-width:0;font-weight:650}
+  .topbar .breadcrumb>svg{align-self:center}
+  .profile-menu-trigger{padding-left:10px;margin-left:0}
+  .form-grid{grid-template-columns:minmax(0,1fr)}
+  .tracking-start-note{gap:9px;padding:12px}
+  .tracking-start-note strong{font-size:12px;line-height:1.6}
+  .tracking-start-note span{font-size:12px}
+  .workspace-footer{gap:12px;flex-wrap:wrap;font-size:11px}
+  .profile-choices{gap:12px}
+  .profile-level{font-size:11px}
+  .teacher-entry{font-size:13px}
+  .menu-guide{top:62px;max-height:calc(100dvh - 78px);overflow-y:auto}
+  .profile-menu-popup{max-height:calc(100dvh - 90px);overflow-y:auto}
 }

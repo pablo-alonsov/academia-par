@@ -1,0 +1,16 @@
+.arp-modal-backdrop.modal-backdrop{inset:auto;top:var(--arp-viewport-top,0px);left:var(--arp-viewport-left,0px);width:var(--arp-viewport-width,100%);height:var(--arp-viewport-height,100dvh);box-sizing:border-box;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));overflow:hidden;overscroll-behavior:contain;z-index:120}
+.arp-dialog.modal{display:flex;flex-direction:column;min-width:0;max-height:100%;padding:0;overflow:hidden;box-sizing:border-box;outline:none}
+.arp-dialog-header.card-head{flex:0 0 auto;align-items:flex-start;gap:12px;padding:20px 22px;margin:0;border-bottom:1px solid var(--line);background:var(--surface)}
+.arp-dialog-header h2{min-width:0;margin:5px 0 0;font-size:22px;line-height:1.3;overflow-wrap:anywhere}
+.arp-dialog-header .icon-btn{width:44px;height:44px;min-width:44px;min-height:44px;flex-shrink:0}
+.arp-dialog-content{min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;padding:22px;-webkit-overflow-scrolling:touch;overflow-wrap:anywhere}
+.arp-dialog-content :is(.field,.form-grid,.grid-2,.grid-3){min-width:0}
+.arp-dialog-content :is(.form-grid,.grid-2,.grid-3)>*{min-width:0}
+.arp-dialog-content :is(input,select,textarea){min-width:0;max-width:100%;box-sizing:border-box}
+.arp-dialog-content :is(button,.btn,select){min-height:44px}
+.arp-dialog-content :is(input:not([type=checkbox]):not([type=radio]),textarea,select){width:100%}
+.arp-dialog-content :is(input[type=date],input[type=time],input[type=datetime-local]){display:block;min-inline-size:0;max-inline-size:100%;min-height:46px}
+.arp-dialog-content input::-webkit-date-and-time-value{text-align:left;min-height:1.2em}
+.arp-dialog :is(button,input,select,textarea,a):focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+.arp-dialog-content>form:first-child{margin-top:0}
+@media(max-width:600px){.arp-modal-backdrop.modal-backdrop{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}.arp-dialog.modal{border-radius:16px}.arp-dialog-header.card-head{padding:14px 16px;gap:8px}.arp-dialog-header h2{font-size:20px}.arp-dialog-content{padding:16px}.arp-dialog-content :is(.form-grid,.grid-2,.grid-3){grid-template-columns:minmax(0,1fr)}.arp-dialog-content :is(input:not([type=checkbox]):not([type=radio]),textarea,select){font-size:16px}.arp-dialog-content .field{font-size:14px}}
