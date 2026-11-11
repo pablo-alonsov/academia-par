@@ -58,4 +58,6 @@ El diseño contempla foco visible, áreas interactivas amplias, contraste, tecla
 
 La revisión de distribución, ventanas, exámenes y teclado en tamaños de móvil, tableta y PC está documentada en `docs/validacion-responsive.md`. En móvil la ruta «Mi academia · página» ocupa su propia fila. Las ventanas se montan fuera de las páginas animadas y conservan desplazamiento y foco dentro del viewport.
 
+La barra superior permanece visible al desplazarse en móvil y tableta (hasta 900 px). El botón «Volver arriba» aparece tras bajar más de 320 px y devuelve el foco al contenido antes de subir. La altura real de la cabecera determina la separación de anclas y de la ayuda. El aviso visible de inicio del seguimiento se retiró; la fecha que aplica la lógica de sesiones sigue siendo el 16 de noviembre. Las opciones de examen se adaptan a la alumna: Rocío tiene Conocimiento del Medio y Alejandra Física y química; los cambios de opciones no reescriben exámenes guardados.
+
 El cambio de perfil está disponible en el menú lateral y en el desplegable del avatar superior. La ayuda del menú se muestra una vez por perfil y navegador, se cierra automáticamente tras unos 12 segundos (se pausa al leerla con el puntero o el teclado), puede cerrarse manualmente y puede volver a abrirse desde el avatar. Las transiciones respetan la preferencia de movimiento reducido.

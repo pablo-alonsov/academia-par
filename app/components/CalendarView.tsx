@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, C
 import Dialog from './Dialog';
 import './calendar.css';
 import {ACADEMY_START_DATE,trackingToday} from '@/lib/academy-config';
+import {examSubjectsForStudent,retainedExamSubject} from '@/lib/exam-subjects';
 
 type Item = Record<string, any>;
 type Props = { data: Item; profile: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void };
@@ -42,7 +43,8 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
   const monthKey = iso(month).slice(0, 7);
   const monthEvents: Item[] = [...exams.map((e): Item => ({ ...e, kind: 'exam' })), ...sessions.map((s): Item => ({ ...s, kind: 'session' }))].filter(e => e.date?.slice(0, 7) === monthKey).sort((a, b) => a.date.localeCompare(b.date));
   const upcoming = exams.filter(e => e.date >= today);
-  const subjects = (data.subjects || []).map((s: Item) => s.name).filter(Boolean);
+  const allSubjects:string[] = (data.subjects || []).map((s: Item) => s.name).filter((name:unknown):name is string=>typeof name==='string'&&Boolean(name.trim()));
+  const subjects = examSubjectsForStudent(allSubjects,teacher?exam?.studentId || studentFilter || students[0]?.id || 'rocio':profile);
   const days: Date[] = [];
   const firstDayOffset = (month.getDay() + 6) % 7;
   const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
@@ -58,6 +60,8 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
   const closeExam = () => { if (busy) return; setExam(null); setError(''); setConfirmDelete(false); };
   const newExam = (date = '') => { setExam({ id: crypto.randomUUID(), studentId: teacher ? studentFilter || students[0]?.id || 'rocio' : profile, date, title: '', subject: '', topics: '' }); setNewEntry(true); setEditing(true); setError(''); setConfirmDelete(false); };
   const openExam = (value: Item) => { setExam({ ...value, topics: contentText(value.topics) }); setNewEntry(false); setEditing(false); setError(''); setConfirmDelete(false); };
+  const changeExamStudent=(studentId:string)=>setExam(current=>current?{...current,studentId,subject:retainedExamSubject(allSubjects,studentId,current.subject || '')}:null);
+  const editExam=()=>{setExam(current=>current?{...current,subject:retainedExamSubject(allSubjects,teacher?current.studentId:profile,current.subject || '')}:null);setEditing(true);};
   const saveExam = async (event: React.FormEvent) => {
     event.preventDefault(); if (!exam) return; setBusy(true); setError('');
     try { await act('upsertExam', { id: exam.id, studentId: teacher ? exam.studentId : profile, title: exam.title.trim(), date: exam.date, subject: exam.subject || '', topics: contentText(exam.topics).trim() }); setExam(null); notify(newEntry ? 'Examen guardado.' : 'Examen actualizado.'); }
@@ -105,7 +109,7 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
     {exam && <Dialog title={editing ? newEntry ? 'Nuevo examen' : 'Editar examen' : exam.title} onClose={closeExam} className="cal-exam-dialog">
       {editing ? <form onSubmit={saveExam} className="cal-exam-form">
         <div className="form-grid cal-form-grid">
-          {teacher ? <label className="field">Alumna<select value={exam.studentId} onChange={e => setExam({ ...exam, studentId: e.target.value })} required>{students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label> : <label className="field">Alumna<input readOnly value={studentName(profile)} aria-readonly="true"/></label>}
+          {teacher ? <label className="field">Alumna<select value={exam.studentId} onChange={e => changeExamStudent(e.target.value)} required>{students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label> : <label className="field">Alumna<input readOnly value={studentName(profile)} aria-readonly="true"/></label>}
           <label className="field">Fecha confirmada<input name="exam-date" type="date" value={exam.date} required onChange={e => setExam({ ...exam, date: e.target.value })}/></label>
           <label className="field span-2">Nombre del examen<input value={exam.title} onChange={e => setExam({ ...exam, title: e.target.value })} required maxLength={180} placeholder="Por ejemplo: Examen de fracciones"/></label>
           <label className="field span-2">Asignatura<select value={exam.subject || ''} onChange={e => setExam({ ...exam, subject: e.target.value })}><option value="">Por indicar</option>{subjects.map((subject: string) => <option key={subject}>{subject}</option>)}</select></label>
@@ -117,7 +121,7 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
         <div className="row wrap"><span className={`badge ${exam.studentId === 'rocio' ? 'violet' : 'green'}`}>{studentName(exam.studentId)}</span><span className="muted">{label(exam.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span></div>
         <p><strong>{exam.subject || 'Asignatura por indicar'}</strong></p><h3>Qué conviene preparar</h3><p className="cal-preline">{contentText(exam.topics) || 'Todavía no hay temas anotados. Los concretaremos al revisar el examen.'}</p>
         {(teacher || exam.studentId === profile) && <>
-          <div className="row wrap cal-detail-actions">{teacher && <button className="btn primary" onClick={() => startReview(exam)}><Target size={16}/>Preparar repaso</button>}<button className="btn secondary" onClick={() => setEditing(true)}>Editar examen</button></div>
+          <div className="row wrap cal-detail-actions">{teacher && <button className="btn primary" onClick={() => startReview(exam)}><Target size={16}/>Preparar repaso</button>}<button className="btn secondary" onClick={editExam}>Editar examen</button></div>
           {confirmDelete ? <div className="cal-delete-confirm"><p>¿Eliminar este examen del calendario? Las clases de repaso ya creadas se conservarán.</p><div className="row"><button className="btn danger" disabled={busy} onClick={deleteExam}>Sí, eliminar examen</button><button className="btn quiet" disabled={busy} onClick={() => setConfirmDelete(false)}>Cancelar</button></div></div> : <button className="btn quiet cal-delete" onClick={() => setConfirmDelete(true)}><Trash2 size={15}/>Eliminar examen</button>}
         </>}
         {error && <p className="error-text" role="alert">{error}</p>}

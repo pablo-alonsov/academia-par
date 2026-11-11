@@ -6,13 +6,13 @@ type Props = { name: string; level: string; avatar: ReactNode; onSwitch: () => P
 export default function ProfileMenu({name,level,avatar,onSwitch,onHelp,onOpen}: Props) {
  const [open,setOpen]=useState(false),[switching,setSwitching]=useState(false);
  const wrapper=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null);
- const close=(restore=false)=>{setOpen(false);if(restore)trigger.current?.focus()};
+ const close=(restore=false)=>{setOpen(false);if(restore)trigger.current?.focus({preventScroll:true})};
  const show=()=>{setOpen(true);onOpen()};
  useEffect(()=>{
   if(!open)return;
-  menu.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  menu.current?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});
   const outside=(event:PointerEvent)=>{if(!wrapper.current?.contains(event.target as Node))setOpen(false)};
-  const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus()}};
+  const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus({preventScroll:true})}};
   document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape)};
  },[open]);
@@ -23,7 +23,7 @@ export default function ProfileMenu({name,level,avatar,onSwitch,onHelp,onOpen}: 
   {open&&<div ref={menu} id="profile-options" className="profile-menu-popup" role="menu" aria-label={`Opciones del perfil de ${name}`} onKeyDown={event=>{
    if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();
    const items=Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')||[]),current=items.indexOf(document.activeElement as HTMLButtonElement);
-   const index=event.key==='Home'?0:event.key==='End'?items.length-1:event.key==='ArrowDown'?(current+1)%items.length:(current-1+items.length)%items.length;items[index]?.focus();
+   const index=event.key==='Home'?0:event.key==='End'?items.length-1:event.key==='ArrowDown'?(current+1)%items.length:(current-1+items.length)%items.length;items[index]?.focus({preventScroll:true});
   }}>
    <div className="profile-menu-heading" role="presentation"><strong>{name}</strong><small>{level}</small></div>
    <button role="menuitem" disabled={switching} onClick={async()=>{setSwitching(true);try{await onSwitch();setOpen(false)}finally{setSwitching(false)}}}><LogOut size={17}/>{switching?'Cambiando de perfil…':'Cambiar de perfil'}</button>

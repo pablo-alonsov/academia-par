@@ -45,3 +45,12 @@ Comprobaciones específicas:
 - Material temporal local identificado como `qa-responsive-session`, retirado al terminar y con restauración de los datos anteriores. Las comprobaciones de interfaz no crean clases ni resultados de demostración en producción.
 
 Los estilos nuevos de ventanas y panel docente están separados en `app/components/dialog.css` y `app/components/teacher.css`. No se modificaron el currículo, el inicio del seguimiento ni el sistema de acceso.
+
+## Navegación y materias · 12 de noviembre de 2026
+
+- Cabecera fija comprobada al desplazarse a 320 y 390 px (104 px de altura) y a 768 px (75 px). Sin ensanchar el documento; PC mantiene su distribución habitual.
+- Apertura del perfil por pulsación real mientras la página estaba a 1458 px y cierre con Escape: se conserva la misma posición. Los movimientos de foco usan `preventScroll`.
+- «Volver arriba», de 44 × 44 px, devuelve el scroll a cero y el foco al contenido; comprobado en móvil y PC. Se oculta con el menú móvil y queda inerte al abrir una ventana modal.
+- Aviso de inicio del seguimiento retirado de las vistas; permanece la lógica de fecha inicial acordada.
+- Materias de examen comprobadas en los perfiles de Rocío y Alejandra y en el formulario docente: Conocimiento del Medio solo para Rocío; Física y química para Alejandra. Cambiar la alumna vacía una materia incompatible en el borrador. Se cancelaron todos los formularios de esta revisión, sin escribir exámenes.
+- TypeScript, 28 pruebas existentes y comprobaciones de normalización y deduplicación de materias correctos.
