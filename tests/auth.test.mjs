@@ -41,6 +41,9 @@ const auth=await import('../app/api/auth/route.ts');
 const data=await import('../app/api/data/route.ts');
 const action=await import('../app/api/action/route.ts');
 const {hashPin,digest}=await import('../lib/server-auth.ts');
+const {seed}=await import('../lib/server-data.ts');
+const {initialData}=await import('../lib/seed.ts');
+const {legacySeedBaseline}=await import('../lib/seed-baseline.ts');
 const pin='local-regression-password';
 const pinHash=await hashPin(pin);
 const origin='https://academy.example';
@@ -76,7 +79,7 @@ test('teacher still requires its own password and students cannot perform teache
   assert.equal((await login('teacher','wrong')).response.status,401);
   const teacher=await login('teacher',pin);assert.equal(teacher.response.status,200);
   const rocio=await login('rocio');
-  const session={id:'auth-test-session',studentId:'rocio',date:'2026-11-10',status:'preparada',duration:60,content:'Shared content',privateNotes:'PRIVATE TEACHER NOTE',nextStep:'Shared next step'};
+  const session={id:'auth-test-session',studentId:'rocio',date:'2026-11-16',status:'preparada',duration:60,content:'Shared content',privateNotes:'PRIVATE TEACHER NOTE',nextStep:'Shared next step'};
   assert.equal((await action.POST(request('/api/action',{cookie:rocio.cookie,body:{action:'upsertSession',data:session}}))).status,403);
   assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'upsertSession',data:session}}))).status,200);
   assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'closeSession',data:{id:session.id}}}))).status,200);
@@ -171,4 +174,111 @@ test('teacher can edit and delete exams for either pupil',async()=>{
     assert.equal((await examAction(teacher.cookie,'deleteExam',{id})).status,200);
   }
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM exams').get().n,0);
+});
+
+function insertRecord(table,item,studentId=item.studentId || (table==='students'?item.id:null)) {
+  sqlite.prepare(`INSERT INTO ${table} (id,student_id,data,updated_at) VALUES (?,?,?,?)`).run(item.id,studentId,JSON.stringify(item),'2026-11-11T00:00:00.000Z');
+}
+function restoreObject(target,saved) {for(const key of Object.keys(target))delete target[key];Object.assign(target,saved);}
+test('the actual stored legacy bank and both default student plans reconcile to the current curricula',async()=>{
+  const domains=['students','subjects','skills','activities','resources'];
+  for(const table of domains)assert.equal(new Set(initialData[table].map(item=>item.id)).size,initialData[table].length,`${table} IDs must be unique`);
+  for(const table of domains)for(const original of legacySeedBaseline[table])insertRecord(table,original);
+  await seed();
+  for(const table of domains)for(const planned of initialData[table]) {
+    const row=sqlite.prepare(`SELECT data FROM ${table} WHERE id=?`).get(planned.id);assert.ok(row,`${table}:${planned.id}`);
+    const current=JSON.parse(row.data);
+    for(const [key,value] of Object.entries(planned)) {
+      if(table==='skills'&&['state','lastCheck','observation','evidence'].includes(key))continue;
+      assert.deepEqual(current[key],value,`${table}:${planned.id}.${key}`);
+    }
+    assert.equal(current._seed.revision,1);
+  }
+  for(const id of ['rocio','alejandra']) {
+    const student=JSON.parse(sqlite.prepare('SELECT data FROM students WHERE id=?').get(id).data);
+    assert.ok(student.curriculumFocus.length>0);assert.ok(student.subjectPlan.length>0);
+  }
+  for(const table of ['sessions','responses','assignments','evidence','observations','doubts','exams'])assert.equal(sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+  const before=Object.fromEntries(domains.map(table=>[table,sqlite.prepare(`SELECT id,data,updated_at FROM ${table} ORDER BY id`).all()]));
+  await seed();
+  for(const table of domains)assert.deepEqual(sqlite.prepare(`SELECT id,data,updated_at FROM ${table} ORDER BY id`).all(),before[table]);
+});
+test('stored legacy defaults receive current content without replacing customized learning records or history',async()=>{
+  const desired=initialData.skills.find(s=>s.id==='r-tonica'),saved=structuredClone(desired);
+  const student=initialData.students.find(s=>s.id==='rocio'),savedStudent=structuredClone(student);
+  try {
+    Object.assign(desired,{title:'Contenido curricular actualizado',explanation:'Explicación actualizada',nextStep:'Siguiente paso curricular'});
+    Object.assign(student,{priorities:['Prioridad curricular actualizada'],curriculumFocus:['Foco nuevo'],subjectPlan:[{subject:'Lengua',topics:'Determinantes'}],secondTermSubjects:['Tecnología']});
+    const legacy=legacySeedBaseline.skills.find(s=>s.id==='r-tonica');
+    const current={...legacy,state:'Lo hago sola',lastCheck:'2026-11-18',observation:'Docente privada',evidence:'Ejemplo observado',nextStep:'Próximo paso docente',reviewNeeded:true};
+    insertRecord('skills',current);insertRecord('students',legacySeedBaseline.students.find(s=>s.id==='rocio'));
+    insertRecord('sessions',{id:'existing-history',studentId:'rocio',date:'2026-11-10',status:'realizada',content:'Historia existente'});
+    insertRecord('observations',{id:'existing-observation',studentId:'rocio',skillId:'r-tonica',observation:'Conservar observación'});
+    insertRecord('evidence',{id:'existing-evidence',studentId:'rocio',skillId:'r-tonica',text:'Conservar evidencia',shared:true});
+    insertRecord('exams',{id:'existing-exam',studentId:'rocio',title:'Examen ya anotado',date:'2026-11-20'});
+    await seed();
+    const row=JSON.parse(sqlite.prepare("SELECT data FROM skills WHERE id='r-tonica'").get().data);
+    assert.equal(row.title,desired.title);assert.equal(row.explanation,desired.explanation);
+    for(const key of ['state','lastCheck','observation','evidence','nextStep','reviewNeeded'])assert.deepEqual(row[key],current[key]);
+    const learner=JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data);
+    assert.deepEqual(learner.priorities,student.priorities);assert.deepEqual(learner.curriculumFocus,student.curriculumFocus);
+    for(const table of ['sessions','observations','evidence','exams'])assert.equal(sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,1);
+    for(const table of ['responses','assignments','doubts'])assert.equal(sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+    const first=sqlite.prepare("SELECT data,updated_at FROM skills WHERE id='r-tonica'").get();
+    await seed();assert.deepEqual(sqlite.prepare("SELECT data,updated_at FROM skills WHERE id='r-tonica'").get(),first);
+  } finally {restoreObject(desired,saved);restoreObject(student,savedStudent);}
+});
+test('signed-in refresh reconciles later curriculum edits and hides seed snapshots from pupils',async()=>{
+  const rocio=await login('rocio');
+  const desired=initialData.activities.find(a=>a.id==='r-detective-tildes'),saved=structuredClone(desired);
+  const student=initialData.students.find(s=>s.id==='rocio'),savedStudent=structuredClone(student);
+  try {
+    const current=JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data);
+    current.priorities=['Prioridad docente personalizada'];
+    sqlite.prepare("UPDATE students SET data=? WHERE id='rocio'").run(JSON.stringify(current));
+    desired.objective='Objetivo nuevo publicado mientras sigue conectada';
+    student.curriculumFocus=['Foco actualizado'];
+    const response=await data.GET(request('/api/data',{cookie:rocio.cookie}));assert.equal(response.status,200);
+    const snapshot=await response.json();
+    assert.equal(snapshot.activities.find(a=>a.id===desired.id).objective,desired.objective);
+    assert.deepEqual(snapshot.students[0].priorities,['Prioridad docente personalizada']);assert.deepEqual(snapshot.students[0].curriculumFocus,student.curriculumFocus);
+    assert.ok(!JSON.stringify(snapshot).includes('"_seed"'));
+    assert.ok(snapshot.activities.every(a=>!Object.hasOwn(a,'answer')));
+  } finally {restoreObject(desired,saved);restoreObject(student,savedStudent);}
+});
+test('concurrent teacher changes defeat the seed compare-and-swap and survive its retry',async()=>{
+  const desired=initialData.skills.find(s=>s.id==='r-tonica'),saved=structuredClone(desired);
+  try {
+    const legacy=legacySeedBaseline.skills.find(s=>s.id==='r-tonica');insertRecord('skills',legacy);
+    desired.title='Nuevo título de currículo';
+    const adapter=globalThis.__arpAuthTestEnv.DB,originalBatch=adapter.batch.bind(adapter);let changed=false;
+    adapter.batch=async statements=>{
+      if(!changed){changed=true;const current={...legacy,title:'Edición docente concurrente',nextStep:'Paso docente concurrente'};sqlite.prepare("UPDATE skills SET data=?,updated_at=? WHERE id='r-tonica'").run(JSON.stringify(current),'concurrent-edit');}
+      return originalBatch(statements);
+    };
+    await seed();
+    let current=JSON.parse(sqlite.prepare("SELECT data FROM skills WHERE id='r-tonica'").get().data);assert.equal(current.title,'Edición docente concurrente');assert.equal(current.nextStep,'Paso docente concurrente');
+    await seed();current=JSON.parse(sqlite.prepare("SELECT data FROM skills WHERE id='r-tonica'").get().data);
+    assert.equal(current.title,'Edición docente concurrente');assert.equal(current.nextStep,'Paso docente concurrente');assert.equal(current._seed.baseline.title,desired.title);
+  } finally {restoreObject(desired,saved);}
+});
+test('teacher can customize the new curriculum plan and those edits remain after refresh',async()=>{
+  const teacher=await login('teacher',pin),rocio=await login('rocio');
+  const plan={id:'rocio',curriculumFocus:['Foco docente personalizado'],subjectPlan:[{subject:'Lengua',topics:'Mi selección adaptada',scope:'Contenido confirmado',term:'Primer trimestre'}],secondTermSubjects:['Tecnología']};
+  assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'updateStudent',data:plan}}))).status,200);
+  const snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();
+  assert.deepEqual(snapshot.students[0].curriculumFocus,plan.curriculumFocus);assert.deepEqual(snapshot.students[0].subjectPlan,plan.subjectPlan);
+  assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'updateStudent',data:{id:'rocio',subjectPlan:[{subject:'Lengua',topics:3}]}}}))).status,400);
+  assert.equal((await action.POST(request('/api/action',{cookie:rocio.cookie,body:{action:'updateStudent',data:plan}}))).status,403);
+});
+test('new sessions start on 16 November while existing historical sessions remain editable and closable',async()=>{
+  const teacher=await login('teacher',pin);
+  const makeSession=(id,date)=>action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'upsertSession',data:{id,studentId:'rocio',date,status:'preparada',duration:60,content:'Contenido de sesión'}}}));
+  assert.equal((await makeSession('too-early','2026-11-15')).status,400);
+  assert.equal(sqlite.prepare("SELECT id FROM sessions WHERE id='too-early'").get(),undefined);
+  assert.equal((await makeSession('first-day','2026-11-16')).status,200);
+  insertRecord('sessions',{id:'legacy-session',studentId:'rocio',date:'2026-11-10',status:'preparada',duration:60,content:'Contenido histórico',nextStep:'Conservar siguiente paso'});
+  assert.equal((await makeSession('legacy-session','2026-11-11')).status,200);
+  assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'closeSession',data:{id:'legacy-session'}}}))).status,200);
+  assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM sessions WHERE id='legacy-session'").get().data).status,'realizada');
 });

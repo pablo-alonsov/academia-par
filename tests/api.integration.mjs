@@ -21,7 +21,7 @@ try {
   assert.equal((await api('teacher','/api/auth',{profile:'teacher',pin:process.env.ARP_TEST_PIN})).status,200);
   const baseline=(await api('teacher','/api/data')).data;
   originalStudent=baseline.students.find(x=>x.id==='rocio');originalSkill=baseline.skills.find(x=>x.id==='r-tildes');
-  await action('upsertSession',{id:'qa-session',studentId:'rocio',date:'2026-11-10',status:'preparada',duration:60,objective:'QA objective',content:'QA worked content',privateNotes:'QA PRIVATE SECRET',autonomy:'QA PRIVATE HELP',explanation:'QA shared example',nextStep:'QA next step'});
+  await action('upsertSession',{id:'qa-session',studentId:'rocio',date:'2026-11-16',status:'preparada',duration:60,objective:'QA objective',content:'QA worked content',privateNotes:'QA PRIVATE SECRET',autonomy:'QA PRIVATE HELP',explanation:'QA shared example',nextStep:'QA next step'});
   assert.equal((await api('rocio','/api/auth',{profile:'rocio'})).status,200);
   let pupil=(await api('rocio','/api/data')).data;
   assert.deepEqual(pupil.students.map(x=>x.id),['rocio']);
@@ -44,7 +44,7 @@ try {
   pupil=(await api('rocio','/api/data')).data;
   assert.equal(pupil.sessions.find(x=>x.id==='qa-session').sharedSummary,'QA public summary');
   assert.ok(!JSON.stringify(pupil).includes('QA PRIVATE'));
-  await action('upsertSession',{id:'qa-concurrent',studentId:'rocio',date:'2026-11-10',status:'en curso',duration:60,content:'QA reviewed skill',nextStep:'QA recover'});
+  await action('upsertSession',{id:'qa-concurrent',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'QA reviewed skill',nextStep:'QA recover'});
   const closeBody={action:'closeSession',data:{id:'qa-concurrent',content:'QA reviewed skill',nextStep:'QA recover',skillUpdate:{id:'r-tildes',state:'Lo hago con ayuda',observation:'QA PRIVATE CHECK',evidence:'QA shared evidence'}}};
   const concurrent=await Promise.all([api('teacher','/api/action',closeBody),api('teacher','/api/action',closeBody)]);
   assert.ok(concurrent.every(x=>x.status===200));

@@ -1,6 +1,8 @@
 import { allowedContent, studentDTO } from "./server-policy";
 export { allowedContent, studentDTO } from "./server-policy";
 import { initialData } from "./seed";
+import { legacySeedBaseline } from "./seed-baseline";
+import { reconcileSeedRecord, sameSeedValue, type SeedDomain } from "./curriculum-reconcile";
 import { database, HttpError, type Profile } from "./server-auth";
 
 export type RecordData = Record<string, any>;
@@ -33,13 +35,33 @@ export async function list(table:TableName) {
   return results.map(row=>({...JSON.parse(row.data),id:row.id,...(row.student_id?{studentId:row.student_id}:{})} as RecordData));
 }
 export async function seed() {
-  // Insert planned content only; a stable ID never replaces teacher edits.
+  // Stable planned IDs evolve field by field. Historical sessions, responses,
+  // observations, exams and evidence are deliberately outside this operation.
   const entries = initialData as Record<string, RecordData[]>;
+  const legacy = legacySeedBaseline as unknown as Record<string, RecordData[]>;
   const statements: D1PreparedStatement[]=[];
-  for(const table of ["students","subjects","skills","activities","resources"] as const) for(const data of entries[table] || []) statements.push(recordStatement(table,data,true));
+  const domains:SeedDomain[]=["students","subjects","skills","activities","resources"];
+  const existing=await Promise.all(domains.map(async table=>({table,rows:(await database().prepare(`SELECT * FROM ${table}`).all<Row>()).results})));
+  for(const {table,rows} of existing) {
+    const byId=new Map(rows.map(row=>[row.id,row]));
+    const legacyById=new Map((legacy[table] || []).map(item=>[item.id,item]));
+    for(const desired of entries[table] || []) {
+      const row=byId.get(desired.id);
+      const current=row?JSON.parse(row.data):null;
+      const reconciled=reconcileSeedRecord(table,current,desired,legacyById.get(desired.id));
+      if(!row){statements.push(recordStatement(table,reconciled,true));continue;}
+      if(sameSeedValue(current,reconciled))continue;
+      const now=new Date().toISOString();reconciled.updatedAt=now;
+      // A teacher edit made after this read wins. A later refresh can reconcile
+      // the untouched fields against its newer value without replacing the edit.
+      statements.push(database().prepare(`UPDATE ${table} SET data=?,updated_at=? WHERE id=? AND data=? AND updated_at=? AND student_id IS ?`).bind(JSON.stringify(reconciled),now,row.id,row.data,row.updated_at,row.student_id));
+    }
+  }
   for(let i=0;i<statements.length;i+=80) await database().batch(statements.slice(i,i+80));
 }
 export async function snapshot(profile:Profile) {
+  // Existing signed-in sessions receive curriculum updates on the next refresh.
+  await seed();
   const result:Record<string,RecordData[]>={};
   const all=await Promise.all(tables.map(async table=>({table,items:await list(table)})));
   for(const {table,items} of all) {

@@ -1,9 +1,11 @@
-/** Material inicial planificado. No representa clases impartidas ni aprendizaje comprobado. */
+/** Material planificado. No representa clases impartidas ni aprendizaje comprobado. */
+import {rocioCurriculum} from "./curriculum-rocio";
+import {alejandraCurriculum} from "./curriculum-alejandra";
 export type StudentId = "rocio" | "alejandra";
 export type ActivityType = "choice" | "numeric" | "fraction" | "text" | "open" | "paper" | "external";
-export interface SeedStudent { id: StudentId; name: string; level: string; color: string; avatar: string; priorities: string[]; nextStep: string; }
+export interface SeedStudent { id: StudentId; name: string; level: string; color: string; avatar: string; priorities: string[]; nextStep: string; curriculumFocus?: string[]; subjectPlan?: {subject:string;topics:string;scope?:string;term?:string}[]; secondTermSubjects?: string[]; }
 export interface SeedSubject { id: string; name: string; color: string; }
-export interface SeedSkill { id: string; studentId: StudentId; subject: string; title: string; state: string; reviewNeeded: boolean; lastCheck: null; observation: string; evidence: string; nextStep: string; explanation?: string; }
+export interface SeedSkill { id: string; studentId: StudentId; subject: string; title: string; state: string; reviewNeeded: boolean; lastCheck: null; observation: string; evidence: string; nextStep: string; explanation?: string; phase?: string; }
 export interface SeedActivity { id: string; title: string; objective: string; subject: string; skillId: string; level: string; duration: number; instructions: string; materials: string; checkMethod: string; check: string; type: ActivityType; autoCheck?: boolean; answer?: string; options?: string[]; hints: string[]; suggestedStudentIds: StudentId[]; status: "Disponible"; resourceId?: string; url?: string; }
 export interface SeedResource { id: string; title: string; url: string; objective: string; duration: number; instructions: string; description: string; subject: string; skillId: string; type: string; level: string; suggestedStudentIds: StudentId[]; checkedAt: string; accessStatus: string; accessNote: string; }
 
@@ -103,7 +105,22 @@ export const initialData: { students: SeedStudent[]; subjects: SeedSubject[]; sk
   ],
 };
 
+// Las ampliaciones actualizan el material por identificador sin duplicar habilidades.
+function mergePlanned<T extends {id:string}>(current:T[],updates:ReadonlyArray<{id:string}>):T[]{
+  const records=new Map(current.map(item=>[item.id,item]));
+  for(const update of updates)records.set(update.id,{...records.get(update.id),...update} as T);
+  return [...records.values()];
+}
+const curriculumExtensions=[rocioCurriculum,alejandraCurriculum];
+for(const extension of curriculumExtensions){
+  initialData.students=mergePlanned(initialData.students,[extension.studentPatch]);
+  initialData.skills=mergePlanned(initialData.skills,extension.skills);
+  initialData.activities=mergePlanned(initialData.activities,extension.activities);
+  initialData.resources=mergePlanned(initialData.resources,extension.resources);
+}
+
 // Cada enlace tiene además una actividad reutilizable con consigna y entrega.
 for (const resource of initialData.resources) {
+  if(initialData.activities.some(item=>item.id===`act-${resource.id}`))continue;
   initialData.activities.push(activity({ id: `act-${resource.id}`, title: resource.title, objective: resource.objective, subject: resource.subject, skillId: resource.skillId, level: resource.level, duration: resource.duration, instructions: resource.instructions, materials: `Recurso externo: ${resource.url}. ${resource.accessNote}`, checkMethod: "Entrega y revisión docente de la respuesta. Abrir el enlace o marcarlo como utilizado no registra aciertos externos ni cambia el estado de una habilidad.", type: "external", hints: ["Lee la consigna antes de abrir el enlace y decide qué vas a observar.", "Al volver, explica lo que hiciste y lo que necesitas preguntar."], suggestedStudentIds: resource.suggestedStudentIds, resourceId: resource.id, url: resource.url }));
 }

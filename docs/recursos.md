@@ -1,5 +1,7 @@
 # Recursos de referencia
 
+Actualización del **11 de noviembre de 2026**: las selecciones concretas para el plan actual están en [Rocío](recursos-rocio.md) y [Alejandra](recursos-alejandra.md). El catálogo completo contiene 21 recursos; el material siguiente conserva la comprobación base del 10 de noviembre. La simulación de densidad se comprobó después con interacción y queda actualizada en la ficha de Alejandra.
+
 Comprobación de acceso: **10 de noviembre de 2026**. Se consultaron las nueve URL mediante el navegador de investigación. La comprobación verifica lo que la página devolvió en esa consulta: no es una prueba completa de las actividades interactivas, del acceso en todos los dispositivos ni de todas las condiciones de uso. Las anotaciones se guardan también en los recursos editables de la aplicación.
 
 | Recurso | Resultado observado | Uso propuesto |
@@ -16,4 +18,4 @@ Comprobación de acceso: **10 de noviembre de 2026**. Se consultaron las nueve U
 
 Cada recurso tiene una actividad reutilizable de tipo externo con una consigna y entrega. Abrir enlaces o indicar que se ha utilizado un recurso no informa a la aplicación de los aciertos obtenidos en otra web. No se garantiza la gratuidad de todos los materiales ni su coincidencia con el temario: el docente debe elegir y adaptar el contenido.
 
-El material inicial de lengua, matemáticas y física y química se conserva en `lib/seed.ts` como banco disponible. No hay sesiones, exámenes, entregas, observaciones ni logros de demostración. Las propuestas sobre ecuaciones, masa, volumen y densidad requieren confirmar antes el contenido del colegio.
+El material inicial de lengua, matemáticas y física y química se conserva en `lib/seed.ts` como banco disponible. No hay sesiones, exámenes, entregas, observaciones ni logros de demostración. El foco actual confirmado incluye masa, volumen y densidad para Alejandra. Las ecuaciones y otros materiales anteriores quedan como recursos complementarios, no como objetivos prioritarios ni como contenido impartido.

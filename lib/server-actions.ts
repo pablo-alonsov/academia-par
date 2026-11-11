@@ -1,6 +1,7 @@
 import { allowedContent, closureStatement, get, put, recordStatement, required, type RecordData } from "./server-data";
 import { cleanString, database, HttpError, ownStudent, teacherOnly, validateStudent, type Profile } from "./server-auth";
 import { grade } from "./grading";
+import { ACADEMY_START_DATE, isTrackingDate } from "./academy-config";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -28,9 +29,21 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(!["submitResponse","saveDoubt","useResource","upsertExam","deleteExam"].includes(action)) teacherOnly(profile);
   if(action==="updateStudent") {
     const old=await required("students",validateStudent(data.id));
-    const editable=["name","level","color","avatar","priorities","nextStep","mainActivityId"];
+    const editable=["name","level","color","avatar","priorities","nextStep","mainActivityId","curriculumFocus","subjectPlan","secondTermSubjects"];
     const item:RecordData={...old,...Object.fromEntries(editable.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
     if(item.priorities && (!Array.isArray(item.priorities) || item.priorities.length>6 || item.priorities.some((p:unknown)=>typeof p!=="string"))) throw new HttpError(400,"Mantén hasta seis prioridades breves.");
+    for(const [key,max,length] of [["curriculumFocus",10,250],["secondTermSubjects",8,150]] as const) {
+      if(item[key]!==undefined && (!Array.isArray(item[key]) || item[key].length>max || item[key].some((value:unknown)=>typeof value!=="string" || value.length>length)))throw new HttpError(400,"El foco y las asignaturas deben ser listas breves de textos.");
+    }
+    if(item.subjectPlan!==undefined) {
+      if(!Array.isArray(item.subjectPlan) || item.subjectPlan.length>8)throw new HttpError(400,"El plan admite hasta ocho asignaturas.");
+      item.subjectPlan=item.subjectPlan.map((plan:unknown)=>{
+        if(!plan || typeof plan!=="object" || Array.isArray(plan))throw new HttpError(400,"El plan de asignatura no es válido.");
+        const value=plan as RecordData;
+        const subject=cleanString(value.subject,150);if(!subject.trim())throw new HttpError(400,"Indica la asignatura del plan.");
+        return {subject,topics:text(value.topics,5000),...(value.scope!==undefined?{scope:cleanString(value.scope,300)}:{}),...(value.term!==undefined?{term:cleanString(value.term,100)}:{})};
+      });
+    }
     await put("students",item);return {id:item.id};
   }
   if(action==="upsertSkill") {
@@ -50,6 +63,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const old=data.id?await get("sessions",data.id):null;
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID(),studentId:validateStudent(data.studentId || old?.studentId)};
     date(item.date);
+    if(!old && !isTrackingDate(item.date))throw new HttpError(400,`Las nuevas clases deben tener fecha del ${ACADEMY_START_DATE.split("-").reverse().join("/")} o posterior.`);
     if(!SESSION_STATES.includes(item.status || "por preparar")) throw new HttpError(400,"Estado de sesión no válido.");
     if(item.status==="realizada" && old?.status!=="realizada") throw new HttpError(400,"Usa el cierre de sesión para compartir el resumen.");
     if(old?.status==="realizada") item.status="realizada";

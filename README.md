@@ -19,7 +19,11 @@ La contraseña docente inicial solicitada está configurada como secreto de aloj
 5. Revisa las entregas desde la semana. Las fracciones se comparan por equivalencia exacta; las respuestas abiertas esperan revisión. Las pistas y autoevaluaciones se guardan por separado del resultado.
 6. En **Calendario**, cada alumna puede añadir, editar y eliminar sus propios exámenes y temas; el docente puede gestionar los de ambas. **Preparar repaso** crea una sesión vinculada al examen con una fecha elegida expresamente.
 
-No hay historial de demostración. Las 42 actividades y 20 habilidades iniciales son material planificado. Los 9 recursos incluyen consignas y notas de acceso: véase `docs/recursos.md`. Las webs externas no transmiten resultados a esta aplicación.
+El seguimiento comienza el lunes 16 de noviembre de 2026. Antes de esa fecha, el panel abre en la semana del 16 al 19; las nuevas sesiones tienen fecha del 16 o posterior. Las estadísticas y el diario de seguimiento cuentan desde el inicio acordado; cualquier registro histórico anterior se conserva y se puede consultar desde la ficha docente. No se generan sesiones de forma automática.
+
+El banco contiene 85 actividades, 30 habilidades y 21 recursos, todos planificados. Rocío trabaja potencias y raíces básicas, potencias de 10, acentuación, ortografía e inglés global; Tecnología queda reservada para el segundo trimestre. Alejandra trabaja fracciones, porcentajes, potencias, densidad, concentración, estructura atómica, sintaxis e inglés global. El plan de temas se puede ajustar en la ficha docente.
+
+Los recursos nuevos son páginas concretas, fichas y simulaciones con una consigna, duración y nivel. Véanse `docs/recursos-rocio.md`, `docs/recursos-alejandra.md` y el catálogo base `docs/recursos.md`. Densidad y Construye un átomo de PhET se ejecutaron; donde el audio o un juego no se ha ejecutado, queda anotado. Las webs externas no transmiten resultados a esta aplicación.
 
 ## Datos y permisos
 
@@ -27,7 +31,7 @@ Las tablas separan alumnas, asignaturas, habilidades, sesiones, actividades reut
 
 Los endpoints verifican rol y pertenencia en el servidor. Las vistas de alumna usan listas explícitas de campos autorizados: nunca incluyen soluciones docentes, observaciones privadas ni claves de almacenamiento. Los archivos se descargan a través de una ruta autenticada con control de alumna y de visibilidad. El cierre utiliza una operación atómica con identificador de operación y observación estable para evitar duplicados, incluso con peticiones simultáneas.
 
-`localStorage` guarda el tema, el orden de widgets y si ya se ha mostrado la ayuda inicial del menú para cada perfil en ese navegador. Los contenidos pedagógicos están en D1 y los adjuntos en R2. Los datos locales de desarrollo y los publicados son independientes. Los adjuntos admiten los tipos indicados y hasta 8 MB.
+`localStorage` guarda el tema, el orden de widgets y si ya se ha mostrado la ayuda inicial del menú para cada perfil en ese navegador. Los contenidos pedagógicos están en D1 y los adjuntos en R2. Las actualizaciones del material planificado se reconcilian por identificador y por campo con la versión anterior: conservan las ediciones docentes y todas las valoraciones, evidencias e historiales; las escrituras usan una comprobación de concurrencia. Los metadatos internos de esta actualización no se envían a las alumnas. Los datos locales de desarrollo y los publicados son independientes. Los adjuntos admiten los tipos indicados y hasta 8 MB.
 
 ## Desarrollo
 
