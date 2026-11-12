@@ -5,6 +5,7 @@ import { initialData } from "./seed";
 import { legacySeedBaseline } from "./seed-baseline";
 import { reconcileSeedRecord, sameSeedValue, type SeedDomain } from "./curriculum-reconcile";
 import { database, HttpError, type Profile } from "./server-auth";
+import { avatarUrl } from "./server-avatar";
 
 export type RecordData = Record<string, any>;
 export const tables = ["students","subjects","skills","sessions","resources","activities","assignments","responses","evidence","observations","doubts","exams","files","drafts","word_entries"] as const;
@@ -14,6 +15,16 @@ type Changes=Map<TableName,Set<string>>;
 const actionChanges=new AsyncLocalStorage<Changes>();
 export function trackChange(table:TableName,id:string){const changes=actionChanges.getStore();if(!changes)return;const ids=changes.get(table)||new Set<string>();ids.add(id);changes.set(table,ids);}
 export async function collectAction<T>(run:()=>Promise<T>){const changes:Changes=new Map();const result=await actionChanges.run(changes,run);return {result,changes};}
+/** Apply only the requested profile fields; concurrent unrelated preferences win. */
+export function studentPatchStatement(id:string,patch:RecordData,remove:string[]=[],avatarCommit?:{fileId:string;nonce:string}){
+  const entries=Object.entries(patch).filter(([,value])=>value!==undefined);
+  if([...entries.map(([key])=>key),...remove].some(key=>!/^[A-Za-z][A-Za-z0-9_]*$/.test(key)))throw new HttpError(400,"Campo de perfil no válido.");
+  const now=new Date().toISOString(),stamp="CASE WHEN updated_at>=? THEN strftime('%Y-%m-%dT%H:%M:%fZ',updated_at,'+0.001 seconds') ELSE ? END";
+  let expression=`json_set(data,${entries.map(([key])=>`'$.${key}',json(?)`).concat(`'$.updatedAt',${stamp}`).join(',')})`;
+  if(remove.length)expression=`json_remove(${expression},${remove.map(key=>`'$.${key}'`).join(',')})`;
+  trackChange("students",id);
+  return database().prepare(`UPDATE students SET data=${expression},updated_at=${stamp} WHERE id=?${avatarCommit?" AND EXISTS (SELECT 1 FROM files WHERE id=? AND json_extract(data,'$._profileUploadNonce')=?)":""}`).bind(...entries.map(([,value])=>JSON.stringify(value)),now,now,now,now,id,...(avatarCommit?[avatarCommit.fileId,avatarCommit.nonce]:[]));
+}
 export function recordStatement(table:TableName,data:RecordData,ignore=false) {
   const id=String(data.id || crypto.randomUUID());
   const item:RecordData={...data,id,updatedAt:new Date().toISOString()};
@@ -85,12 +96,14 @@ export async function snapshot(profile:Profile) {
   result.assignments=result.assignments.filter(a=>allowedActivityIds.has(a.activityId));
   return result;
 }
-function fileVisible(file:RecordData|undefined,profile:Profile){return Boolean(file&&file.studentId===profile&&file.shared===true&&file.detached!==true);}
+function fileVisible(file:RecordData|undefined,profile:Profile){return Boolean(file&&file.purpose!=="avatar"&&file.studentId===profile&&file.shared===true&&file.detached!==true);}
 export function projectRecord(profile:Profile,table:TableName,item:RecordData,files:Map<string,RecordData>=new Map(),students:Map<string,RecordData>=new Map()):RecordData|null{
+  if(table==="files"&&item.purpose==="avatar")return null;
   const linked=[...(item.fileId?[item.fileId]:[]),...(Array.isArray(item.fileIds)?item.fileIds:[])];
   if(profile==="teacher"){
     const projected=teacherDTO(item);
-    if((table==="resources"||table==="evidence")&&linked.length){projected.fileUnavailable=linked.some(id=>{const f=files.get(id);return !f||f.detached===true||f.shared!==true;});projected.fileDetached=linked.some(id=>files.get(id)?.detached===true);}
+    if(table==="students"){delete projected.avatarUrl;const url=avatarUrl(item,files.get(item.avatarFileId));if(url)projected.avatarUrl=url;}
+    if((table==="resources"||table==="evidence")&&linked.length){projected.fileUnavailable=linked.some(id=>{const f=files.get(id);return !f||f.purpose==="avatar"||f.detached===true||f.shared!==true;});projected.fileDetached=linked.some(id=>files.get(id)?.detached===true);}
     return projected;
   }
   if(!allowedContent(item,profile)||table==="observations"||(table==="students"&&item.id!==profile)||(table==="sessions"&&item.status!=="realizada"))return null;
@@ -98,6 +111,7 @@ export function projectRecord(profile:Profile,table:TableName,item:RecordData,fi
   if(table==="evidence"&&(item.shared!==true||item.detached===true))return null;
   if((table==="resources"||table==="evidence")&&(item.detached===true||item.shared===false||linked.some(id=>!fileVisible(files.get(id),profile))))return null;
   const projected=studentDTO(table,item);
+  if(table==="students"){const url=avatarUrl(item,files.get(item.avatarFileId));if(url)projected.avatarUrl=url;}
   if(Array.isArray(projected.fileIds))projected.fileIds=projected.fileIds.filter((id:string)=>fileVisible(files.get(id),profile));
   if(table==="resources")projected.pinned=Boolean(students.get(profile)?.pinnedResourceIds?.includes(item.id));
   return projected;
@@ -105,7 +119,7 @@ export function projectRecord(profile:Profile,table:TableName,item:RecordData,fi
 export async function actionPatch(profile:Profile,changes:Changes){
   const patch:Partial<Record<TableName,RecordData[]>>={},removed:Partial<Record<TableName,string[]>>={};
   const records=await Promise.all([...changes].map(async([table,ids])=>({table,ids:[...ids],rows:await Promise.all([...ids].map(id=>get(table,id)))})));
-  const linkedIds=new Set<string>();for(const {table,rows}of records)for(const row of rows)if(row){if(row.fileId)linkedIds.add(row.fileId);for(const id of row.fileIds||[])linkedIds.add(id);if(table==="files")linkedIds.add(row.id);}
+  const linkedIds=new Set<string>();for(const {table,rows}of records)for(const row of rows)if(row){if(row.fileId)linkedIds.add(row.fileId);if(row.avatarFileId)linkedIds.add(row.avatarFileId);for(const id of row.fileIds||[])linkedIds.add(id);if(table==="files")linkedIds.add(row.id);}
   const files=new Map<string,RecordData>();for(const file of await Promise.all([...linkedIds].map(id=>get("files",id))))if(file)files.set(file.id,file);
   const students=new Map<string,RecordData>();if(profile!=="teacher"&&records.some(x=>x.table==="resources")){const student=await get("students",profile);if(student)students.set(student.id,student);}
   for(const {table,ids,rows}of records){const visible:RecordData[]=[],missing:string[]=[];rows.forEach((row,index)=>{const projected=row?projectRecord(profile,table,row,files,students):null;if(projected)visible.push(projected);else missing.push(ids[index]);});patch[table]=visible;if(missing.length)removed[table]=missing;}

@@ -1,14 +1,14 @@
-import { allowedContent, closureStatement, deleteStatement, get, list, put, recordStatement, required, submissionStatement, trackChange, type RecordData } from "./server-data";
+import { allowedContent, closureStatement, deleteStatement, get, list, put, recordStatement, required, studentPatchStatement, submissionStatement, trackChange, type RecordData } from "./server-data";
 import { cleanString, database, HttpError, ownStudent, teacherOnly, validateStudent, type Profile } from "./server-auth";
 import { grade } from "./grading";
 import { ACADEMY_START_DATE, isTrackingDate } from "./academy-config";
+import { PROFILE_COLORS, PROFILE_AVATARS } from "./profile-customization";
+import { validAvatarFile } from "./server-avatar";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
 const CATEGORIES=["Para hacer en clase","Para casa","Opcionales"];
 const TYPES=["choice","numeric","fraction","text","open","paper","external"];
-const COLORS=["violet","blue","teal","rose","amber"];
-const AVATARS=["initials","book","star","planet","flower","rocket"];
 function date(value:unknown) {if(typeof value!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(new Date(value).getTime()) || new Date(value).toISOString().slice(0,10)!==value) throw new HttpError(400,"Indica una fecha válida.");return value;}
 function text(value:unknown,max=20000) {return value==null?"":cleanString(value,max);}
 function webLink(value:unknown) {
@@ -21,7 +21,16 @@ function skillState(value:unknown) {if(!STATES.includes(String(value))) throw ne
 async function ensureFileAccess(profile:Profile,ids:unknown,studentId:string) {
   if(ids===undefined) return;
   if(!Array.isArray(ids) || ids.length>8) throw new HttpError(400,"No se pueden adjuntar tantos archivos.");
-  for(const id of ids) {const file=await required("files",id); if(file.studentId!==studentId || file.detached===true || (profile!=="teacher" && file.shared!==true)) throw new HttpError(403,"Este archivo no está disponible para la alumna.");trackChange("files",file.id);}
+  for(const id of ids) {const file=await required("files",id); if(file.purpose==="avatar" || file.studentId!==studentId || file.detached===true || (profile!=="teacher" && file.shared!==true)) throw new HttpError(403,"Este archivo no está disponible para la alumna.");trackChange("files",file.id);}
+}
+async function customizeProfile(old:RecordData,item:RecordData,data:RecordData){
+  if(data.color!==undefined){if(data.color!==old.color&&!PROFILE_COLORS.includes(data.color))throw new HttpError(400,"Elige un color de la colección.");item.color=data.color;}
+  if(data.avatar!==undefined){if(data.avatar!==old.avatar&&data.avatar!=="photo"&&!PROFILE_AVATARS.includes(data.avatar))throw new HttpError(400,"Elige un avatar de la colección.");item.avatar=data.avatar;}
+  if(data.removePhoto!==undefined&&typeof data.removePhoto!=="boolean")throw new HttpError(400,"Indica si quieres retirar la foto.");
+  if(data.removePhoto===true){delete item.avatarFileId;item.avatar="initials";return;}
+  if(data.avatarFileId!==undefined){if(typeof data.avatarFileId!=="string"||!data.avatarFileId)throw new HttpError(400,"Usa Quitar foto para retirar la imagen guardada.");item.avatarFileId=data.avatarFileId;}
+  if(data.avatar==="photo"||data.avatarFileId!==undefined){const file=item.avatarFileId?await get("files",item.avatarFileId):null;if(!validAvatarFile(item.id,file))throw new HttpError(400,"Selecciona una foto de perfil propia antes de activarla.");}
+  delete item.avatarUrl;
 }
 function selfAssessment(value:unknown,required=false){const normalized=({easy:"Fácil",some_doubt:"Con alguna duda",need_help:"Necesito ayuda"} as Record<string,string>)[String(value)] || value || "";if(!["","Fácil","Con alguna duda","Necesito ayuda"].includes(String(normalized))||(required&&!normalized))throw new HttpError(400,"Indica cómo te has sentido con esta actividad.");return String(normalized);}
 function procedure(value:unknown):Record<string,string>|undefined{if(value==null)return undefined;if(typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"El procedimiento no es válido.");const item=value as RecordData;return Object.fromEntries(["data","question","calculation","unitsAnswer"].map(key=>[key,text(item[key],12000)]));}
@@ -53,8 +62,9 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(!["submitResponse","saveDoubt","useResource","upsertExam","deleteExam","saveDraft","deleteDraft","upsertWord","deleteWord","updatePreferences"].includes(action)) teacherOnly(profile);
   if(action==="updateStudent") {
     const old=await required("students",validateStudent(data.id));
-    const editable=["name","level","color","avatar","priorities","nextStep","mainActivityId","alternativeActivityId","pinnedResourceIds","curriculumFocus","subjectPlan","secondTermSubjects"];
+    const editable=["name","level","color","avatar","avatarFileId","priorities","nextStep","mainActivityId","alternativeActivityId","pinnedResourceIds","curriculumFocus","subjectPlan","secondTermSubjects"];
     const item:RecordData={...old,...Object.fromEntries(editable.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
+    await customizeProfile(old,item,data);
     if(item.priorities && (!Array.isArray(item.priorities) || item.priorities.length>6 || item.priorities.some((p:unknown)=>typeof p!=="string"))) throw new HttpError(400,"Mantén hasta seis prioridades breves.");
     for(const [key,max,length] of [["curriculumFocus",10,250],["secondTermSubjects",8,150]] as const) {
       if(item[key]!==undefined && (!Array.isArray(item[key]) || item[key].length>max || item[key].some((value:unknown)=>typeof value!=="string" || value.length>length)))throw new HttpError(400,"El foco y las asignaturas deben ser listas breves de textos.");
@@ -70,7 +80,8 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     }
     for(const key of ["mainActivityId","alternativeActivityId"])if(item[key]){const activity=await required("activities",item[key]);if(!allowedContent(activity,item.id))throw new HttpError(403,"La actividad pertenece a otra alumna.");}
     if(data.pinnedResourceIds!==undefined){item.pinnedResourceIds=await resourceIds(data.pinnedResourceIds,item.id,8);for(const id of old.pinnedResourceIds||[])trackChange("resources",id);}
-    await put("students",item);return {id:item.id};
+    const keys=editable.filter(key=>data[key]!==undefined);if(data.removePhoto===true)keys.push("avatar");
+    await studentPatchStatement(item.id,Object.fromEntries(keys.filter(key=>!(data.removePhoto===true&&key==="avatarFileId")).map(key=>[key,item[key]])),["avatarUrl",...(data.removePhoto===true?["avatarFileId"]:[])]).run();return {id:item.id};
   }
   if(action==="upsertSkill") {
     const old=data.id?await get("skills",data.id):null;
@@ -243,6 +254,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     webLink(item.url);
     if(item.fileId) {
       const file=await required("files",item.fileId);
+      if(file.purpose==="avatar")throw new HttpError(400,"Las fotos de perfil no son materiales de clase.");
       if(file.shared!==true||file.detached===true)throw new HttpError(400,"Marca el archivo como compartido y disponible antes de añadirlo a la biblioteca.");
       if(item.studentId && file.studentId!==item.studentId)throw new HttpError(400,"El archivo pertenece a otra alumna.");
       trackChange("files",file.id);
@@ -290,13 +302,14 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   }
   if(action==="updatePreferences"){
     const studentId=ownStudent(profile,data.studentId || profile),old=await required("students",studentId),item:RecordData={...old};
-    if(data.color!==undefined){if(!COLORS.includes(data.color))throw new HttpError(400,"Elige un color de la colección.");item.color=data.color;}
-    if(data.avatar!==undefined){if(!AVATARS.includes(data.avatar))throw new HttpError(400,"Elige un avatar de la colección.");item.avatar=data.avatar;}
+    await customizeProfile(old,item,data);
     if(data.favoriteResourceIds!==undefined)item.favoriteResourceIds=await resourceIds(data.favoriteResourceIds,studentId,50);
-    await put("students",item);return {id:studentId};
+    const keys=["color","avatar","avatarFileId","favoriteResourceIds"].filter(key=>data[key]!==undefined);if(data.removePhoto===true)keys.push("avatar");
+    await studentPatchStatement(studentId,Object.fromEntries(keys.filter(key=>!(data.removePhoto===true&&key==="avatarFileId")).map(key=>[key,item[key]])),["avatarUrl",...(data.removePhoto===true?["avatarFileId"]:[])]).run();return {id:studentId};
   }
   if(action==="manageFile"){
     const old=await required("files",data.id);
+    if(old.purpose==="avatar")throw new HttpError(400,"Gestiona esta imagen desde la foto de perfil.");
     if((data.shared!==undefined&&typeof data.shared!=="boolean")||(data.detached!==undefined&&typeof data.detached!=="boolean")||(data.shared===undefined&&data.detached===undefined))throw new HttpError(400,"Indica la visibilidad o retirada del archivo.");
     await put("files",{...old,...(data.shared===undefined?{}:{shared:data.shared}),...(data.detached===undefined?{}:{detached:data.detached,detachedAt:data.detached?new Date().toISOString():null})});
     for(const table of ["resources","evidence","responses","drafts","sessions"] as const)for(const item of await list(table))if(item.fileId===old.id||item.fileIds?.includes(old.id)||(table==="sessions"&&item.id===old.sessionId)||JSON.stringify(item).includes(old.id))trackChange(table,item.id);

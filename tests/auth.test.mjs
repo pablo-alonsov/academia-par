@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import ts from 'typescript';
 import {png,docx,heif} from './upload-fixtures.mjs';
+import {PROFILE_COLORS,PROFILE_AVATARS} from '../lib/profile-customization.ts';
 
 // Invoke the actual route handlers with production-like HTTPS Requests. The only
 // substituted dependency is the Cloudflare binding, backed by real in-memory SQL.
@@ -44,6 +45,8 @@ const action=await import('../app/api/action/route.ts');
 const profiles=await import('../app/api/profiles/route.ts');
 const fileRoute=await import('../app/api/files/[id]/route.ts');
 const uploadRoute=await import('../app/api/files/route.ts');
+const profilePhotoRoute=await import('../app/api/profile-photo/route.ts');
+const publicAvatarRoute=await import('../app/api/profiles/[id]/avatar/route.ts');
 const {hashPin,digest}=await import('../lib/server-auth.ts');
 const {seed}=await import('../lib/server-data.ts');
 const {initialData}=await import('../lib/seed.ts');
@@ -423,7 +426,7 @@ test('draft saves use compare-and-swap and stale clients cannot overwrite or res
   const competing=await Promise.all([mutate(rocio.cookie,'saveDraft',{...target,answer:'A',clientRevision:'new-a',baseRevision:''}),mutate(rocio.cookie,'saveDraft',{...target,answer:'B',clientRevision:'new-b',baseRevision:''})]);assert.equal(competing.filter(x=>x.conflict).length,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1);
 });
 
-function memoryBucket(){const objects=new Map();let puts=0;globalThis.__arpAuthTestEnv.BUCKET={async put(key,bytes){puts++;objects.set(key,Uint8Array.from(bytes));},async get(key){const bytes=objects.get(key);return bytes?{body:bytes,size:bytes.length}:null;},async delete(key){objects.delete(key);}};return {objects,get puts(){return puts}};}
+function memoryBucket(){const objects=new Map();let puts=0;globalThis.__arpAuthTestEnv.BUCKET={async put(key,bytes){puts++;objects.set(key,Uint8Array.from(bytes));},async get(key){const bytes=objects.get(key);return bytes?{body:bytes,size:bytes.length,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}:null;},async delete(key){objects.delete(key);}};return {objects,get puts(){return puts}};}
 async function upload(cookie,{bytes=png,name='foto.png',type='image/png',studentId='rocio',uploadId,sessionId,expectedProfile}={}){const body=new FormData();body.set('file',new File([bytes],name,{type}));body.set('studentId',studentId);if(uploadId!==undefined)body.set('uploadId',uploadId);if(sessionId)body.set('sessionId',sessionId);return uploadRoute.POST(new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin,Cookie:cookie,...(expectedProfile===undefined?{}:{'X-ARP-Profile':expectedProfile})},body}));}
 
 test('optional profile headers reject stale mobile tabs before any read, write or upload',async()=>{
@@ -480,4 +483,60 @@ test('same-millisecond autosaves and closure retain strictly increasing canonica
   const stale=await mutate(teacher.cookie,'upsertSession',{id:first.id,baseUpdatedAt:first.updatedAt,content:'Stale'});assert.equal(stale.conflict,true);assert.equal(stale.patch.sessions[0].content,'Third');
   const closed=(await mutate(teacher.cookie,'closeSession',{id:first.id,content:'Final'})).patch.sessions[0];assert.ok(closed.updatedAt>two.updatedAt);assert.equal(closed.updatedAt,closed.closedAt);const row=sqlite.prepare('SELECT data,updated_at FROM sessions WHERE id=?').get(first.id);assert.equal(row.updated_at,closed.updatedAt);assert.equal(JSON.parse(row.data).updatedAt,closed.updatedAt);
  }finally{globalThis.Date=RealDate;}
+});
+
+async function uploadAvatar(cookie,{bytes=png,name='perfil.png',type='image/png',studentId='rocio',uploadId=crypto.randomUUID(),expectedProfile}={}){const body=new FormData();body.set('file',new File([bytes],name,{type}));body.set('studentId',studentId);if(uploadId!==undefined)body.set('uploadId',uploadId);return profilePhotoRoute.POST(new Request(origin+'/api/profile-photo',{method:'POST',headers:{Origin:origin,...(cookie?{Cookie:cookie}:{}),...(expectedProfile===undefined?{}:{'X-ARP-Profile':expectedProfile})},body}));}
+function publicAvatar(url){return publicAvatarRoute.GET(new Request(origin+url),{params:Promise.resolve({id:new URL(origin+url).pathname.split('/')[3]})});}
+test('the complete shared collection is accepted and arbitrary appearance values stay rejected',async()=>{
+ const rocio=await login('rocio');for(const color of PROFILE_COLORS)assert.equal((await mutate(rocio.cookie,'updatePreferences',{color})).patch.students[0].color,color);for(const avatar of PROFILE_AVATARS)assert.equal((await mutate(rocio.cookie,'updatePreferences',{avatar})).patch.students[0].avatar,avatar);
+ await mutate(rocio.cookie,'updatePreferences',{color:'javascript:invalid'},400);await mutate(rocio.cookie,'updatePreferences',{avatar:'custom-url'},400);await mutate(rocio.cookie,'updatePreferences',{avatar:'photo'},400);
+});
+test('profile uploads require their own scoped image and never accept teaching formats or oversized photos',async()=>{
+ const rocio=await login('rocio'),bucket=memoryBucket();assert.equal((await uploadAvatar()).status,401);assert.equal((await uploadAvatar(rocio.cookie,{studentId:'alejandra'})).status,403);assert.equal((await uploadAvatar(rocio.cookie,{expectedProfile:'alejandra'})).status,409);
+ for(const [bytes,type]of [[Buffer.from('<svg/>'),'image/png'],[heif(),'image/heic'],[docx,'application/octet-stream'],[Buffer.from('%PDF-1.7'),'application/pdf'],[Buffer.from('GIF89a'),'image/gif']])assert.equal((await uploadAvatar(rocio.cookie,{bytes,type})).status,400);
+ assert.equal((await uploadAvatar(rocio.cookie,{bytes:new Uint8Array(2*1024*1024+1)})).status,413);assert.equal((await uploadAvatar(rocio.cookie,{bytes:new Uint8Array()})).status,413);assert.equal(bucket.puts,0);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,0);
+});
+test('an atomic profile photo has a public versioned image URL but cannot become a teaching attachment',async()=>{
+ const rocio=await login('rocio'),teacher=await login('teacher',pin),bucket=memoryBucket();const uploaded=await uploadAvatar(rocio.cookie,{type:'application/octet-stream'});assert.equal(uploaded.status,200);const result=await uploaded.json(),student=result.patch.students[0];assert.equal(student.avatar,'photo');assert.equal(student.avatarFileId,result.id);assert.equal(student.avatarUrl,result.avatarUrl);assert.deepEqual(Object.keys(result.patch),['students']);assert.ok(!result.avatarUrl.includes(result.id));
+ const image=await publicAvatar(result.avatarUrl);assert.equal(image.status,200);assert.equal(image.headers.get('Content-Type'),'image/png');assert.equal(image.headers.get('Cache-Control'),'no-store');assert.deepEqual(new Uint8Array(await image.arrayBuffer()),new Uint8Array(png));assert.equal((await publicAvatar('/api/profiles/rocio/avatar')).status,404);
+ const publicData=await (await profiles.GET()).json(),publicRocio=publicData.find(s=>s.id==='rocio');assert.equal(publicRocio.avatarUrl,result.avatarUrl);assert.deepEqual(Object.keys(publicRocio).sort(),['avatar','avatarUrl','color','id','level','name']);
+ for(const cookie of [rocio.cookie,teacher.cookie]){const snapshot=await (await data.GET(request('/api/data',{cookie}))).json();assert.equal(snapshot.files.length,0);assert.equal((await fileRoute.GET(request('/api/files/'+result.id,{cookie}),{params:Promise.resolve({id:result.id})})).status,404);}
+ await mutate(teacher.cookie,'saveEvidence',{studentId:'rocio',fileId:result.id,title:'Not a class photo',shared:true},403);await mutate(teacher.cookie,'upsertResource',{studentId:'rocio',id:'avatar-not-resource',fileId:result.id,title:'Not a resource',type:'Foto',instructions:'No'},400);await mutate(teacher.cookie,'manageFile',{id:result.id,shared:true},400);
+ const remove=new Request(origin+'/api/files/'+result.id,{method:'DELETE',headers:{Cookie:teacher.cookie,Origin:origin}});assert.equal((await fileRoute.DELETE(remove,{params:Promise.resolve({id:result.id})})).status,400);assert.equal(bucket.objects.size,1);
+});
+test('icons retain an optional photo, explicit removal stops its public URL, and old retries do not reactivate it',async()=>{
+ const rocio=await login('rocio'),bucket=memoryBucket(),uploadId=crypto.randomUUID(),first=await (await uploadAvatar(rocio.cookie,{uploadId})).json();
+ const icon=await mutate(rocio.cookie,'updatePreferences',{avatar:'cat',color:'graphite'});assert.equal(icon.patch.students[0].avatarFileId,first.id);assert.equal(icon.patch.students[0].avatarUrl,first.avatarUrl);assert.equal((await publicAvatar(first.avatarUrl)).status,404);assert.equal((await (await profiles.GET()).json()).find(s=>s.id==='rocio').avatarUrl,undefined);
+ const activated=await mutate(rocio.cookie,'updatePreferences',{avatar:'photo'});assert.equal(activated.patch.students[0].avatarUrl,first.avatarUrl);assert.equal((await publicAvatar(first.avatarUrl)).status,200);
+ const removed=await mutate(rocio.cookie,'updatePreferences',{removePhoto:true});assert.equal(removed.patch.students[0].avatar,'initials');assert.equal(removed.patch.students[0].avatarFileId,undefined);assert.equal(removed.patch.students[0].avatarUrl,undefined);assert.equal((await publicAvatar(first.avatarUrl)).status,404);assert.equal(bucket.objects.size,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,1);
+ const retry=await uploadAvatar(rocio.cookie,{uploadId});assert.equal(retry.status,409);assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data).avatar,'initials');assert.equal(bucket.puts,1);
+});
+test('replacing and concurrently retrying profile photos preserves the latest choice and isolated ownership',async()=>{
+ const rocio=await login('rocio'),alejandra=await login('alejandra'),teacher=await login('teacher',pin),bucket=memoryBucket(),firstId=crypto.randomUUID(),first=await (await uploadAvatar(rocio.cookie,{uploadId:firstId})).json(),second=await (await uploadAvatar(rocio.cookie)).json();assert.notEqual(first.avatarUrl,second.avatarUrl);assert.equal((await publicAvatar(first.avatarUrl)).status,404);assert.equal((await publicAvatar(second.avatarUrl)).status,200);
+ const oldRetry=await uploadAvatar(rocio.cookie,{uploadId:firstId});assert.equal(oldRetry.status,409);assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data).avatarFileId,second.id);
+ const other=await (await uploadAvatar(alejandra.cookie,{studentId:'alejandra'})).json();await mutate(rocio.cookie,'updatePreferences',{avatar:'photo',avatarFileId:other.id},400);await mutate(teacher.cookie,'updateStudent',{id:'rocio',avatar:'photo',avatarFileId:other.id},400);await mutate(rocio.cookie,'updatePreferences',{studentId:'alejandra',removePhoto:true},403);
+ const stable=crypto.randomUUID(),responses=await Promise.all([uploadAvatar(rocio.cookie,{uploadId:stable}),uploadAvatar(rocio.cookie,{uploadId:stable})]);assert.ok(responses.every(r=>r.status===200));const both=await Promise.all(responses.map(r=>r.json()));assert.equal(both[0].id,both[1].id);assert.equal(bucket.objects.size,4);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,4);
+ assert.equal((await uploadAvatar(rocio.cookie,{uploadId:stable,bytes:Buffer.from([0xff,0xd8,0xff]),type:'image/jpeg'})).status,409);
+ await mutate(rocio.cookie,'updatePreferences',{avatarUrl:'https://untrusted.example/photo'});assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data).avatarUrl,undefined);
+});
+test('the public photo route refuses teaching files, foreign owners, incorrect bytes and stale revisions',async()=>{
+ await login('rocio');const bucket=memoryBucket(),id='forged-avatar',revision=await digest(id),key=`avatars/rocio/${id}/fixture`;
+ const cases=[{purpose:undefined,key:'rocio/teaching-photo',studentId:'rocio',bytes:png},{purpose:'avatar',key:'rocio/teaching-photo',studentId:'rocio',bytes:png},{purpose:'avatar',key,studentId:'alejandra',bytes:png},{purpose:'avatar',key,studentId:'rocio',bytes:Buffer.from('<svg>Not a PNG</svg>')}];
+ for(const value of cases){sqlite.prepare('DELETE FROM files WHERE id=?').run(id);insertRecord('files',{id,type:'image/png',size:value.bytes.length,avatarRevision:revision,...value});sqlite.prepare("UPDATE students SET data=json_set(data,'$.avatar','photo','$.avatarFileId',?) WHERE id='rocio'").run(id);bucket.objects.set(value.key,value.bytes);assert.equal((await publicAvatar(`/api/profiles/rocio/avatar?v=${revision}`)).status,404);}
+});
+test('a failed atomic photo commit rolls back the reference and cleans its unlinked candidate object',async()=>{
+ const rocio=await login('rocio'),bucket=memoryBucket(),before=sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data,adapter=globalThis.__arpAuthTestEnv.DB,original=adapter.batch.bind(adapter);
+ adapter.batch=statements=>original(statements.map(s=>s.sql.startsWith('UPDATE students')?{run:async()=>{throw Error('simulated profile commit failure')}}:s));
+ assert.equal((await uploadAvatar(rocio.cookie)).status,500);assert.equal(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data,before);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,0);assert.equal(bucket.objects.size,0);
+});
+
+test('concurrent preference fields and profile photos preserve each other with canonical increasing versions',async()=>{
+ const rocio=await login('rocio'),teacher=await login('teacher',pin);memoryBucket();await uploadAvatar(rocio.cookie);const original=D1Statement.prototype.run;let injected=false,newPhoto;
+ D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE students')&&this.sql.includes("'$.color'")){injected=true;newPhoto=await (await uploadAvatar(rocio.cookie)).json();}return original.call(this);};
+ try{const changed=await mutate(rocio.cookie,'updatePreferences',{color:'cyan'});assert.equal(changed.patch.students[0].avatarFileId,newPhoto.id);assert.equal(changed.patch.students[0].color,'cyan');assert.ok(changed.patch.students[0].updatedAt>newPhoto.patch.students[0].updatedAt);}finally{D1Statement.prototype.run=original;}
+ injected=false;D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE students')&&this.sql.includes("'$.name'")){injected=true;newPhoto=await (await uploadAvatar(rocio.cookie)).json();}return original.call(this);};
+ try{const changed=await mutate(teacher.cookie,'updateStudent',{id:'rocio',name:'Rocío'});assert.equal(changed.patch.students[0].avatarFileId,newPhoto.id);assert.equal(changed.patch.students[0].color,'cyan');}finally{D1Statement.prototype.run=original;}
+ const adapter=globalThis.__arpAuthTestEnv.DB,oldBatch=adapter.batch.bind(adapter);let preference;
+ adapter.batch=async statements=>{if(statements.some(s=>s.sql.startsWith('INSERT OR IGNORE INTO files'))){preference=await mutate(rocio.cookie,'updatePreferences',{color:'emerald'});}return oldBatch(statements);};
+ const final=await (await uploadAvatar(rocio.cookie)).json();assert.equal(final.patch.students[0].color,'emerald');assert.ok(final.patch.students[0].updatedAt>preference.patch.students[0].updatedAt);
 });

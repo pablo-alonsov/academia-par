@@ -1,22 +1,68 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DateInput from './DateInput';
-import { BookOpen, Check, Flower2, Orbit, Palette, Pencil, Plus, Rocket, Search, Star, Trash2, UserRound, X } from "lucide-react";
+import { BookOpen, Camera, Check, ChevronDown, LoaderCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import ProfileAvatar, { avatarOptions } from "./ProfileAvatar";
+import { studentColors } from "@/lib/profile-customization";
+import { prepareProfilePhoto, AVATAR_PHOTO_ACCEPT } from "@/lib/client-profile-photo";
+export { studentColors } from "@/lib/profile-customization";
 import { LocalFormRecovery, useStudentLocalForms } from "./StudentLocalForms";
 import "./student-tools.css";
 
-export const studentColors: Record<string, { label: string; color: string; soft: string }> = {
-  violet: { label: "Violeta", color: "#6751a8", soft: "#eee9fa" }, blue: { label: "Azul", color: "#285ca8", soft: "#e7effb" }, teal: { label: "Verde azulado", color: "#1e7164", soft: "#e0f2ec" }, rose: { label: "Rosa", color: "#a83c65", soft: "#f9e6ed" }, amber: { label: "Ámbar", color: "#8c601f", soft: "#fcf0d9" },
-};
-const avatarOptions = [{ id: "initials", label: "Iniciales", icon: UserRound }, { id: "book", label: "Libro", icon: BookOpen }, { id: "star", label: "Estrella", icon: Star }, { id: "planet", label: "Planeta", icon: Orbit }, { id: "flower", label: "Flor", icon: Flower2 }, { id: "rocket", label: "Cohete", icon: Rocket }];
 export function StudentAvatar({ student, small = false }: any) {
-  const option = avatarOptions.find(item => item.id === student?.avatar), Icon = option?.icon;
-  return <span className={`st-avatar ${small ? "small" : ""}`} style={{ background: (studentColors[student?.color] || studentColors[student?.id === "alejandra" ? "teal" : "violet"]).color }} aria-hidden="true">{Icon && option.id !== "initials" ? <Icon size={small ? 20 : 29}/> : (student?.name || "A").slice(0, 1)}</span>;
+  return <ProfileAvatar student={student} size={small ? "small" : "normal"} className={`st-avatar ${small ? "small" : ""}`}/>;
 }
+
+type PendingPhoto = { file: File; url: string; uploadId: string };
 export function PersonalizationPanel({ student, act, notify }: any) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const save = async (patch: any) => { const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null; setBusy(true); setError(""); try { await act("updatePreferences", { studentId: student.id, ...patch }); notify("Preferencias guardadas."); } catch (reason: any) { setError(reason.message); } finally { setBusy(false); requestAnimationFrame(() => { if (previous?.isConnected && previous.getClientRects().length) previous.focus({ preventScroll: true }); }); } };
-  return <details className="st-personalization"><summary><Palette size={17}/>Personalizar presentación</summary><div className="card st-personalization-content"><div className="row"><StudentAvatar student={student} small/><span className="muted">Color y avatar del perfil</span></div><fieldset disabled={busy}><legend>Color</legend><div className="st-colors">{Object.entries(studentColors).map(([id, value]) => <button type="button" key={id} aria-pressed={student.color === id} aria-label={value.label} title={value.label} style={{ background: value.color }} onClick={() => save({ color: id })}>{student.color === id && <Check size={20}/>}<span className="sr-only">{value.label}</span></button>)}</div></fieldset><fieldset disabled={busy}><legend>Avatar</legend><div className="st-avatars">{avatarOptions.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-pressed={student.avatar === id || id === "initials" && !avatarOptions.some(a => a.id === student.avatar)} onClick={() => save({ avatar: id })}><Icon size={19}/><span>{label}</span></button>)}</div></fieldset>{busy && <p role="status" className="muted">Guardando preferencias…</p>}{error && <p role="alert" className="error-text">{error}</p>}</div></details>;
+  const [busy, setBusy] = useState(false), [preparing, setPreparing] = useState(false), [error, setError] = useState(""), [showAllIcons, setShowAllIcons] = useState(false), [photo, setPhoto] = useState<PendingPhoto | null>(null), [busyMessage, setBusyMessage] = useState("");
+  const preview = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null), choosePhoto = useRef<HTMLButtonElement>(null), photoUrl = useRef(""), sequence = useRef(0), mounted = useRef(true), saving = useRef(false);
+  const working = busy || preparing;
+  const colorId = studentColors[student.color] ? student.color : student.id === "alejandra" ? "teal" : "violet";
+  const avatarId = student.avatar === "photo" || avatarOptions.some(item => item.id === student.avatar) ? student.avatar : "initials";
+  const hasSavedPhoto = Boolean(student.avatarFileId);
+  const firstIcons = avatarOptions.slice(0, 8), selectedIcon = avatarOptions.find(item => item.id === avatarId);
+  const visibleIcons = showAllIcons ? avatarOptions : selectedIcon && !firstIcons.some(item => item.id === avatarId) ? [...firstIcons, selectedIcon] : firstIcons;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; sequence.current++; if (photoUrl.current) URL.revokeObjectURL(photoUrl.current); }; }, []);
+  const clearPhoto = (restoreFocus = false) => {
+    sequence.current++; if (photoUrl.current) URL.revokeObjectURL(photoUrl.current); photoUrl.current = "";
+    setPhoto(null); setPreparing(false); if (fileInput.current) fileInput.current.value = "";
+    if (restoreFocus) requestAnimationFrame(() => choosePhoto.current?.focus({ preventScroll: true }));
+  };
+  const runSave = async (action: string, payload: any, message: string, onSuccess?: () => void) => {
+    if (saving.current || preparing) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    saving.current = true; setBusy(true); setError(""); setBusyMessage(action === "uploadProfilePhoto" ? "Guardando foto…" : "Guardando preferencias…");
+    try { await act(action, payload); if (mounted.current) { onSuccess?.(); notify(message); } }
+    catch (reason: any) { if (mounted.current) setError(reason.message || "No se ha podido confirmar el cambio. Vuelve a intentarlo."); }
+    finally { saving.current = false; if (mounted.current) { setBusy(false); setBusyMessage(""); requestAnimationFrame(() => { const target = previous?.isConnected && previous.getClientRects().length ? previous : choosePhoto.current; target?.focus({ preventScroll: true }); }); } }
+  };
+  const save = (patch: any, message = "Preferencias guardadas.") => runSave("updatePreferences", { studentId: student.id, ...patch }, message);
+  const selectPhoto = async (file: File) => {
+    const current = ++sequence.current; let preparedSuccessfully = false; setPreparing(true); setError("");
+    try {
+      const prepared = await prepareProfilePhoto(file);
+      if (!mounted.current || sequence.current !== current) return;
+      const url = URL.createObjectURL(prepared); if (photoUrl.current) URL.revokeObjectURL(photoUrl.current); photoUrl.current = url;
+      setPhoto({ file: prepared, url, uploadId: crypto.randomUUID() }); preparedSuccessfully = true;
+    } catch (reason: any) { if (mounted.current && sequence.current === current) setError(reason.message || "No se ha podido preparar la foto. Elige otra imagen."); }
+    finally { if (mounted.current && sequence.current === current) { setPreparing(false); requestAnimationFrame(() => { if (!mounted.current || sequence.current !== current) return; const target = preparedSuccessfully ? preview.current : choosePhoto.current; target?.focus({ preventScroll: true }); if (preparedSuccessfully) target?.scrollIntoView({ block: "nearest", behavior: "auto" }); }); } }
+  };
+  const savePhoto = () => {
+    if (!photo || working) return;
+    const body = new FormData(); body.set("file", photo.file); body.set("studentId", student.id); body.set("uploadId", photo.uploadId);
+    return runSave("uploadProfilePhoto", body, "Foto de perfil guardada.", () => clearPhoto());
+  };
+  return <details className="st-personalization"><summary><Palette size={17}/>Personalizar presentación</summary><div className="card st-personalization-content">
+    <div className="row st-current-profile"><StudentAvatar student={student} small/><div><strong>{student.name}</strong><span className="muted">Presentación actual del perfil</span></div></div>
+    <fieldset disabled={working}><legend>Color <span className="muted">· {studentColors[colorId].label}</span></legend><div className="st-colors">{Object.entries(studentColors).map(([id, value]) => <button type="button" key={id} aria-pressed={colorId === id} aria-label={value.label} title={value.label} style={{ background: value.color }} onClick={() => save({ color: id })}>{colorId === id && <Check size={20} aria-hidden="true"/>}<span className="sr-only">{value.label}</span></button>)}</div></fieldset>
+    <fieldset disabled={working}><legend>Iniciales e iconos</legend><div className="st-avatars" id="profile-avatar-options">{visibleIcons.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-pressed={avatarId === id} onClick={() => save({ avatar: id })}><Icon size={19} aria-hidden="true"/><span>{label}</span>{avatarId === id && <Check size={15} className="st-avatar-selected" aria-hidden="true"/>}</button>)}</div>{avatarOptions.length > 8 && <button type="button" className="btn quiet st-more-icons" aria-expanded={showAllIcons} aria-controls="profile-avatar-options" onClick={() => setShowAllIcons(value => !value)}>{showAllIcons ? "Mostrar menos iconos" : `Mostrar todos los iconos (${avatarOptions.length})`}<ChevronDown size={16} aria-hidden="true"/></button>}</fieldset>
+    <section className="st-photo-section" aria-labelledby="profile-photo-title"><h3 id="profile-photo-title">Foto del perfil</h3><p className="muted st-photo-help">Elige una imagen y revisa el recorte antes de guardarla. Se verá en el selector de perfiles y en tu espacio.</p><input ref={fileInput} type="file" accept={AVATAR_PHOTO_ACCEPT} hidden disabled={working} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void selectPhoto(file); }}/><div className="st-photo-actions"><button ref={choosePhoto} type="button" className="btn secondary" disabled={working} onClick={() => fileInput.current?.click()}><Camera size={17} aria-hidden="true"/>{photo ? "Elegir otra foto" : hasSavedPhoto ? "Cambiar foto" : "Elegir foto"}</button>{hasSavedPhoto && avatarId !== "photo" && <button type="button" className="btn secondary" disabled={working} onClick={() => save({ avatar: "photo" }, "Foto de perfil activada.")}>Usar mi foto</button>}{hasSavedPhoto && <button type="button" className="btn quiet" disabled={working} onClick={() => save({ removePhoto: true }, "Foto de perfil retirada.")}><Trash2 size={16} aria-hidden="true"/>Quitar foto</button>}</div>
+      {(photo || preparing) && <div ref={preview} tabIndex={-1} role="group" aria-label="Vista previa de la foto seleccionada" className="st-photo-preview">{photo && <img src={photo.url} alt={`Vista previa de la nueva foto de perfil de ${student.name || "la alumna"}`} width={112} height={112}/>}<div>{preparing ? <p role="status"><LoaderCircle size={16} className="st-photo-spinner" aria-hidden="true"/>Preparando imagen…</p> : <><strong>Vista previa</strong><p className="muted">Esta imagen se aplicará al guardar.</p></>}<div className="st-photo-actions">{photo && <button type="button" className="btn primary" disabled={working} onClick={savePhoto}><Check size={17} aria-hidden="true"/>Guardar foto</button>}<button type="button" className="btn secondary" disabled={busy} onClick={() => { setError(""); clearPhoto(true); }}><X size={16} aria-hidden="true"/>Cancelar selección</button></div></div></div>}
+      <p className="muted st-photo-formats">JPG, PNG, WebP o HEIC/HEIF compatible con el dispositivo.</p>
+    </section>
+    {busy && <p role="status" className="st-saving"><LoaderCircle size={16} className="st-photo-spinner" aria-hidden="true"/>{busyMessage}</p>}{error && <p role="alert" className="error-text">{error}</p>}
+  </div></details>;
 }
 
 const emptyWord = () => ({ id: crypto.randomUUID(), isNew: true, original: "", corrected: "", reason: "", sentence: "", reviewDate: "" });

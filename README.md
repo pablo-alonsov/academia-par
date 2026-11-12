@@ -35,6 +35,10 @@ Guardar un borrador y entregar son operaciones distintas. La aplicación indica 
 
 Rocío dispone de una colección editable de palabras, con original, corrección, explicación, frase y fecha de revisión. Alejandra puede añadir datos, qué busca, cálculo y respuesta con unidades junto al resultado. Las preferencias de avatar y color y los recursos favoritos pertenecen a cada alumna. El docente puede fijar hasta tres recursos y destacar una actividad principal y una alternativa.
 
+Desde **Inicio → Personalizar presentación**, cada alumna puede elegir entre 16 colores y 28 avatares de iconos o iniciales. Puede seleccionar una foto, revisar su vista previa y guardarla expresamente. La foto se recorta al centro, se prepara como JPEG cuadrado de hasta 512 px y se recodifica sin copiar los metadatos del original. Admite JPG, PNG, WebP y HEIC/HEIF cuando el navegador pueda decodificarlos; si no, solicita JPG o PNG. Se puede volver a un icono, reutilizar la foto guardada o quitar su referencia.
+
+La foto activa aparece también en el selector sin iniciar sesión, igual que el nombre y el avatar del perfil. Solo la foto activa tiene esta ruta pública; requiere que el archivo sea de tipo avatar, pertenezca a esa alumna y coincida con la versión vigente. Al quitarla o elegir un icono, la ruta deja de servirla. Los archivos de clase y notas docentes conservan sus controles de acceso y no se pueden convertir en fotos de perfil. Las fotos se almacenan en R2 con un propósito separado y no aparecen como materiales académicos. Cambiar o retirar la foto no borra físicamente objetos anteriores ni modifica el historial de aprendizaje.
+
 El panel muestra un resumen por alumna y una cola de revisión por prioridad. La preparación contextual incluye búsqueda de actividades, duración y favoritas, y permite guardar y abrir la sesión. Un cierre confirmado no puede ser sobrescrito por un autosave antiguo; si otra pestaña ya cerró, las notas no publicadas quedan consultables como borrador local. Los materiales se pueden hacer privados o retirar de forma reversible, manteniendo sus relaciones con los trabajos.
 
 Los estados de habilidad no son porcentajes. «Por empezar» no rellena ningún indicador; la última comprobación incluye también el trabajo con ayuda, con su fecha y evidencia. La propiedad de una habilidad con historial no puede cambiar: adaptarla a la otra alumna crea una habilidad nueva sin trasladar resultados.
@@ -58,7 +62,7 @@ Requiere Node.js >=22.13 y npm. El proyecto incluye `package-lock.json` y las he
 - En una base local ya creada con la primera migración, aplica solo la nueva `drizzle/0001_narrow_whistler.sql` con el mismo comando de D1; añade borradores y palabras sin modificar las tablas existentes.
 - `npm run dev` sirve en loopback, normalmente `http://127.0.0.1:5173`.
 - `node node_modules/typescript/bin/tsc --noEmit` comprueba tipos.
-- `node --test tests/*.test.mjs` ejecuta las 92 pruebas de permisos, persistencia, concurrencia, corrección, privacidad, recuperación y utilidades móviles.
+- `node --test tests/*.test.mjs` ejecuta las 104 pruebas de permisos, persistencia, concurrencia, corrección, privacidad, recuperación, personalización y utilidades móviles.
 - El test de integración `tests/api.integration.mjs` solo admite una base de datos local en loopback, usa `ARP_TEST_PIN` en el entorno del proceso y limpia sus registros `qa-*`. No lo dirijas a producción.
 
 La publicación utiliza `.openai/hosting.json`, migraciones versionadas, el secreto en Sites y el flujo oficial de empaquetado. Los archivos `.dev.vars`, `.wrangler`, `node_modules` y los resultados de compilación quedan fuera del repositorio.
