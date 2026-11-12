@@ -27,13 +27,25 @@ El banco contiene 119 actividades, 30 habilidades y 21 recursos, todos planifica
 
 Los recursos nuevos son páginas concretas, fichas y simulaciones con una consigna, duración y nivel. Véanse `docs/recursos-rocio.md`, `docs/recursos-alejandra.md` y el catálogo base `docs/recursos.md`. Densidad y Construye un átomo de PhET se ejecutaron; donde el audio o un juego no se ha ejecutado, queda anotado. Las webs externas no transmiten resultados a esta aplicación.
 
+## Seguimiento y recuperación
+
+Inicio destaca la actividad elegida, sus alternativas, los borradores y el último feedback. Practicar conserva los intentos y permite repetir sin borrar entregas. Biblioteca separa utilizar un recurso de recibir una revisión; abrir una web no registra aciertos externos. Las dudas respondidas siguen disponibles.
+
+Guardar un borrador y entregar son operaciones distintas. La aplicación indica si está pendiente, guardando, guardada en el servidor o conservada solamente en el dispositivo. Las entregas tienen identificador de intento para evitar duplicados al reintentar; no eliminan una versión de borrador diferente creada desde otra pestaña. Cuando caduca el acceso, se puede volver a entrar sin desmontar el editor. Una petición antigua no se reenvía con otro perfil.
+
+Rocío dispone de una colección editable de palabras, con original, corrección, explicación, frase y fecha de revisión. Alejandra puede añadir datos, qué busca, cálculo y respuesta con unidades junto al resultado. Las preferencias de avatar y color y los recursos favoritos pertenecen a cada alumna. El docente puede fijar hasta tres recursos y destacar una actividad principal y una alternativa.
+
+El panel muestra un resumen por alumna y una cola de revisión por prioridad. La preparación contextual incluye búsqueda de actividades, duración y favoritas, y permite guardar y abrir la sesión. Un cierre confirmado no puede ser sobrescrito por un autosave antiguo; si otra pestaña ya cerró, las notas no publicadas quedan consultables como borrador local. Los materiales se pueden hacer privados o retirar de forma reversible, manteniendo sus relaciones con los trabajos.
+
+Los estados de habilidad no son porcentajes. «Por empezar» no rellena ningún indicador; la última comprobación incluye también el trabajo con ayuda, con su fecha y evidencia. La propiedad de una habilidad con historial no puede cambiar: adaptarla a la otra alumna crea una habilidad nueva sin trasladar resultados.
+
 ## Datos y permisos
 
-Las tablas separan alumnas, asignaturas, habilidades, sesiones, actividades reutilizables, asignaciones, respuestas, recursos, evidencias, observaciones, dudas, exámenes y archivos. Cada entidad tiene identificador estable, alumna cuando corresponde, contenido JSON y fecha de actualización. Las observaciones conservan el historial de comprobaciones; cambiar un estado sin marcar una comprobación no inventa una fecha.
+Las tablas separan alumnas, asignaturas, habilidades, sesiones, actividades reutilizables, asignaciones, respuestas, recursos, evidencias, observaciones, dudas, exámenes, archivos, borradores (`drafts`) y colección de palabras (`word_entries`). Cada entidad tiene identificador estable, alumna cuando corresponde, contenido JSON y fecha de actualización. Las observaciones conservan el historial de comprobaciones; cambiar un estado sin marcar una comprobación no inventa una fecha.
 
 Los endpoints verifican rol y pertenencia en el servidor. Las vistas de alumna usan listas explícitas de campos autorizados: nunca incluyen soluciones docentes, observaciones privadas ni claves de almacenamiento. Los archivos se descargan a través de una ruta autenticada con control de alumna y de visibilidad. El cierre utiliza una operación atómica con identificador de operación y observación estable para evitar duplicados, incluso con peticiones simultáneas.
 
-`localStorage` guarda el tema, el orden de widgets y si ya se ha mostrado la ayuda inicial del menú para cada perfil en ese navegador. Los contenidos pedagógicos están en D1 y los adjuntos en R2. Las actualizaciones del material planificado se reconcilian por identificador y por campo con la versión anterior: conservan las ediciones docentes y todas las valoraciones, evidencias e historiales; las escrituras usan una comprobación de concurrencia. Los metadatos internos de esta actualización no se envían a las alumnas. Los datos locales de desarrollo y los publicados son independientes. Los adjuntos admiten los tipos indicados y hasta 8 MB.
+`localStorage` guarda el tema, el orden de widgets, las preferencias de vista y los indicadores de lectura, la ayuda inicial y una copia de recuperación de los borradores, siempre separada por perfil y actividad o recurso. Los borradores también se guardan en D1. Las notas docentes pendientes de una sesión se recuperan desde `sessionStorage`: sobreviven a una recarga en la misma pestaña, pero no se promete conservar esa copia local si se cierra la pestaña. El guardado confirmado del servidor sí permanece entre dispositivos. Los contenidos pedagógicos están en D1 y los adjuntos en R2. Las actualizaciones del material planificado se reconcilian por identificador y por campo con la versión anterior: conservan las ediciones docentes y todas las valoraciones, evidencias e historiales; las escrituras usan una comprobación de concurrencia. Los metadatos internos de esta actualización no se envían a ningún cliente. Las mutaciones devuelven únicamente las filas afectadas y sus proyecciones autorizadas; un autosave no vuelve a descargar todo el banco. Los datos locales de desarrollo y los publicados son independientes. Los adjuntos admiten los tipos indicados y hasta 8 MB.
 
 ## Desarrollo
 
@@ -43,9 +55,10 @@ Requiere Node.js >=22.13 y npm. El proyecto incluye `package-lock.json` y las he
 - `npm run db:generate` genera una nueva migración cuando cambia `db/schema.ts`; las migraciones aplicadas no se modifican.
 - `npm run build` genera el Worker y la configuración local de D1/R2.
 - Aplica las migraciones pendientes locales: `node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_clammy_eternals.sql`.
+- En una base local ya creada con la primera migración, aplica solo la nueva `drizzle/0001_narrow_whistler.sql` con el mismo comando de D1; añade borradores y palabras sin modificar las tablas existentes.
 - `npm run dev` sirve en loopback, normalmente `http://127.0.0.1:5173`.
 - `node node_modules/typescript/bin/tsc --noEmit` comprueba tipos.
-- `node --experimental-strip-types --test tests/grading.test.mjs tests/policy.test.mjs` comprueba corrección y privacidad.
+- `node --experimental-strip-types --test tests/auth.test.mjs tests/grading.test.mjs tests/policy.test.mjs tests/curriculum.test.mjs tests/client-state.test.mjs tests/draft-recovery.test.mjs tests/review-priority.test.mjs` comprueba permisos, persistencia, concurrencia, corrección, privacidad y recuperación del acceso.
 - El test de integración `tests/api.integration.mjs` solo admite una base de datos local en loopback, usa `ARP_TEST_PIN` en el entorno del proceso y limpia sus registros `qa-*`. No lo dirijas a producción.
 
 La publicación utiliza `.openai/hosting.json`, migraciones versionadas, el secreto en Sites y el flujo oficial de empaquetado. Los archivos `.dev.vars`, `.wrangler`, `node_modules` y los resultados de compilación quedan fuera del repositorio.

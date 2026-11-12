@@ -22,6 +22,10 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
   const [month, setMonth] = useState(() => { const value = dateOf(trackingToday()); return new Date(value.getFullYear(), value.getMonth(), 1, 12); });
   const [studentFilter, setStudentFilter] = useState('');
   const [view, setView] = useState<'month' | 'agenda'>('month');
+  const [focusDay,setFocusDay]=useState(trackingToday);
+  const pendingDayFocus=useRef(false);
+  useEffect(()=>{try{const saved=localStorage.getItem(`arp-calendar-view:${profile}`);setView(saved==='month'||saved==='agenda'?saved:matchMedia('(max-width:600px)').matches?'agenda':'month')}catch{}},[profile]);
+  const chooseView=(value:'month'|'agenda')=>{setView(value);try{localStorage.setItem(`arp-calendar-view:${profile}`,value)}catch{}};
   const monthScrollRef=useRef<HTMLDivElement>(null);
   const [monthCanScroll,setMonthCanScroll]=useState(false);
   const [exam, setExam] = useState<Item | null>(null);
@@ -45,11 +49,22 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
   const upcoming = exams.filter(e => e.date >= today);
   const allSubjects:string[] = (data.subjects || []).map((s: Item) => s.name).filter((name:unknown):name is string=>typeof name==='string'&&Boolean(name.trim()));
   const subjects = examSubjectsForStudent(allSubjects,teacher?exam?.studentId || studentFilter || students[0]?.id || 'rocio':profile);
+  const retainedSubject=retainedExamSubject(allSubjects,teacher?exam?.studentId||'rocio':profile,exam?.subject||'');
+  if(retainedSubject&&!subjects.includes(retainedSubject))subjects.push(retainedSubject);
   const days: Date[] = [];
   const firstDayOffset = (month.getDay() + 6) % 7;
   const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cellCount = Math.ceil((firstDayOffset + totalDays) / 7) * 7;
   for (let i = 0; i < cellCount; i++) days.push(new Date(month.getFullYear(), month.getMonth(), i - firstDayOffset + 1, 12));
+  const activeDay=days.some(day=>iso(day)===focusDay)?focusDay:iso(month);
+  useEffect(()=>{if(!pendingDayFocus.current||view!=='month')return;pendingDayFocus.current=false;monthScrollRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-date="${focusDay}"]`)?.focus()},[focusDay,month,view]);
+  const moveDay=(event:React.KeyboardEvent<HTMLButtonElement>,value:string)=>{
+    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))return;
+    event.preventDefault();const target=dateOf(value),weekday=(target.getDay()+6)%7;
+    if(event.key==='PageUp'||event.key==='PageDown'){const day=target.getDate();target.setDate(1);target.setMonth(target.getMonth()+(event.key==='PageUp'?-1:1));target.setDate(Math.min(day,new Date(target.getFullYear(),target.getMonth()+1,0).getDate()))}
+    else target.setDate(target.getDate()+({ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7,Home:-weekday,End:6-weekday}[event.key]||0));
+    pendingDayFocus.current=true;setFocusDay(iso(target));if(target.getMonth()!==month.getMonth()||target.getFullYear()!==month.getFullYear())setMonth(new Date(target.getFullYear(),target.getMonth(),1,12));
+  };
   const changeMonth = (delta: number) => setMonth(value => new Date(value.getFullYear(), value.getMonth() + delta, 1, 12));
   useEffect(()=>{
     const region=monthScrollRef.current;if(!region){setMonthCanScroll(false);return;}
@@ -89,12 +104,12 @@ export default function CalendarView({ data, profile, act, notify }: Props) {
     <div className="calendar-layout">
       <section className="card calendar-card" aria-label="Calendario de exámenes y clases">
         <div className="calendar-toolbar"><div className="row"><h2 aria-live="polite">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(month)}</h2></div><div className="row"><button className="btn quiet cal-today" onClick={() => { const d = dateOf(trackingToday()); setMonth(new Date(d.getFullYear(), d.getMonth(), 1, 12)); }}>{today<ACADEMY_START_DATE?'Inicio':'Hoy'}</button><button className="icon-btn" aria-label="Mes anterior" onClick={() => changeMonth(-1)}><ChevronLeft size={19}/></button><button className="icon-btn" aria-label="Mes siguiente" onClick={() => changeMonth(1)}><ChevronRight size={19}/></button></div></div>
-        <div className="cal-controls"><div className="cal-view-toggle" aria-label="Vista del calendario"><button aria-pressed={view === 'month'} className={view === 'month' ? 'selected' : ''} onClick={() => setView('month')}><CalendarDays size={15}/>Mes</button><button aria-pressed={view === 'agenda'} className={view === 'agenda' ? 'selected' : ''} onClick={() => setView('agenda')}><List size={15}/>Agenda</button></div>{teacher && <label className="cal-filter"><span className="sr-only">Filtrar por alumna</span><select value={studentFilter} onChange={event => setStudentFilter(event.target.value)}><option value="">Ambas alumnas</option>{students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}</div>
+        <div className="cal-controls"><div className="cal-view-toggle" aria-label="Vista del calendario"><button aria-pressed={view === 'month'} className={view === 'month' ? 'selected' : ''} onClick={() => chooseView('month')}><CalendarDays size={15}/>Mes</button><button aria-pressed={view === 'agenda'} className={view === 'agenda' ? 'selected' : ''} onClick={() => chooseView('agenda')}><List size={15}/>Agenda</button></div>{teacher && <label className="cal-filter"><span className="sr-only">Filtrar por alumna</span><select value={studentFilter} onChange={event => setStudentFilter(event.target.value)}><option value="">Ambas alumnas</option>{students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}</div>
         {view === 'month' ? <>
           <div ref={monthScrollRef} className={`cal-month-scroll ${monthCanScroll?'has-overflow':''}`} role="region" aria-label="Calendario mensual, desplazamiento horizontal" tabIndex={monthCanScroll?0:undefined}>
           <div className="calendar-week-labels">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => <span key={day}>{day}</span>)}</div>
-          <div className="calendar-grid">{days.map(day => { const dayIso = iso(day); const outside = day.getMonth() !== month.getMonth(); const dayExams = exams.filter(e => e.date?.slice(0, 10) === dayIso); const daySessions = sessions.filter(s => s.date?.slice(0, 10) === dayIso); return <div key={dayIso} className={`calendar-day ${outside ? 'outside' : ''} ${dayIso<ACADEMY_START_DATE?'before-start':''}`}>
-            <button className="calendar-day-target" aria-label={`Añadir examen el ${label(dayIso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`} onClick={() => newExam(dayIso)}/>
+          <p className="cal-keyboard-help" id="calendar-keyboard-help">Con teclado: flechas para moverte por los días; Intro para añadir un examen.</p><div className="calendar-grid" role="group" aria-describedby="calendar-keyboard-help" aria-label="Días del mes">{days.map(day => { const dayIso = iso(day); const outside = day.getMonth() !== month.getMonth(); const dayExams = exams.filter(e => e.date?.slice(0, 10) === dayIso); const daySessions = sessions.filter(s => s.date?.slice(0, 10) === dayIso); return <div key={dayIso} className={`calendar-day ${outside ? 'outside' : ''} ${dayIso<ACADEMY_START_DATE?'before-start':''}`}>
+            <button className="calendar-day-target" data-calendar-date={dayIso} tabIndex={dayIso===activeDay?0:-1} onFocus={()=>setFocusDay(dayIso)} onKeyDown={event=>moveDay(event,dayIso)} aria-label={`Añadir examen el ${label(dayIso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`} onClick={() => newExam(dayIso)}/>
             <span className={`day-number ${dayIso === today ? 'is-today' : ''}`} aria-current={dayIso === today ? 'date' : undefined}>{day.getDate()}</span>{dayIso===ACADEMY_START_DATE&&<span className="calendar-start-label">Inicio</span>}
             {dayExams.map(e => <button key={e.id} className={`calendar-event ${e.studentId}`} title={`${studentName(e.studentId)} · ${e.title}`} aria-label={`${e.title}, ${studentName(e.studentId)}, ${label(dayIso)}`} onClick={() => openExam(e)}><span className="cal-event-dot"/><span className="cal-event-title">{e.title}</span></button>)}
             {daySessions.map(s => <button key={s.id} className="calendar-event session" title={`${studentName(s.studentId)} · ${s.objective || 'Clase'} · ${sessionStates[s.status] || s.status}`} onClick={() => setSession(s)}><BookOpen size={11}/><span>{teacher ? `${studentName(s.studentId)} · ` : ''}{s.objective || 'Clase'}</span></button>)}

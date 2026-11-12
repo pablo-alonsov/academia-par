@@ -33,13 +33,15 @@ class D1Statement {
   async all() {return {results:this.db.prepare(this.sql).all(...this.bindings),success:true,meta:{}};}
 }
 class D1Adapter {
-  constructor(db) {this.db=db;}
+  constructor(db) {this.db=db;this.writer=Promise.resolve();}
   prepare(sql) {return new D1Statement(this.db,sql);}
-  async batch(statements) {this.db.exec('BEGIN');try {const results=[];for(const s of statements)results.push(await s.run());this.db.exec('COMMIT');return results;}catch(error){this.db.exec('ROLLBACK');throw error;}}
+  async batch(statements) {const task=this.writer.catch(()=>{}).then(async()=>{this.db.exec('BEGIN');try {const results=[];for(const s of statements)results.push(await s.run());this.db.exec('COMMIT');return results;}catch(error){this.db.exec('ROLLBACK');throw error;}});this.writer=task;return task;}
 }
 const auth=await import('../app/api/auth/route.ts');
 const data=await import('../app/api/data/route.ts');
 const action=await import('../app/api/action/route.ts');
+const profiles=await import('../app/api/profiles/route.ts');
+const fileRoute=await import('../app/api/files/[id]/route.ts');
 const {hashPin,digest}=await import('../lib/server-auth.ts');
 const {seed}=await import('../lib/server-data.ts');
 const {initialData}=await import('../lib/seed.ts');
@@ -281,4 +283,138 @@ test('new sessions start on 16 November while existing historical sessions remai
   assert.equal((await makeSession('legacy-session','2026-11-11')).status,200);
   assert.equal((await action.POST(request('/api/action',{cookie:teacher.cookie,body:{action:'closeSession',data:{id:'legacy-session'}}}))).status,200);
   assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM sessions WHERE id='legacy-session'").get().data).status,'realizada');
+});
+
+async function mutate(cookie,name,item,expected=200){const result=await action.POST(request('/api/action',{cookie,body:{action:name,data:item}}));const body=await result.json();assert.equal(result.status,expected,JSON.stringify(body));return body;}
+test('cloud drafts preserve complete own work and never become assignments or progress',async()=>{
+  const rocio=await login('rocio'),alejandra=await login('alejandra');
+  const payload={studentId:'rocio',activityId:'r-detective-tildes',answer:'Mi borrador: Rocío',comment:'Una duda',hintsUsed:[0],selfAssessment:'Con alguna duda',clientRevision:'revision-1',procedure:{data:'Palabras',question:'Tildes',calculation:'Revisión',unitsAnswer:'Texto revisado',privateNotes:'ignored'},privateNotes:'ignored'};
+  const saved=await mutate(rocio.cookie,'saveDraft',payload),draft=saved.patch.drafts[0];
+  assert.equal(draft.id,'draft:rocio:activity:r-detective-tildes');assert.equal(draft.answer,payload.answer);assert.equal(draft.clientRevision,'revision-1');assert.deepEqual(draft.hintsUsed,[0]);assert.ok(!Object.hasOwn(draft,'privateNotes'));assert.ok(!Object.hasOwn(draft.procedure,'privateNotes'));
+  const restored=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.deepEqual(restored.drafts[0],draft);
+  assert.equal((await (await data.GET(request('/api/data',{cookie:alejandra.cookie}))).json()).drafts.length,0);
+  await mutate(rocio.cookie,'saveDraft',{...payload,studentId:'alejandra'},403);
+  await mutate(rocio.cookie,'saveDraft',{...payload,activityId:'a-densidad-procedimiento'},403);
+  await mutate(rocio.cookie,'saveDraft',{...payload,hintsUsed:[99]},400);
+  for(const table of ['assignments','responses','observations'])assert.equal(sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+  const deleted=await mutate(rocio.cookie,'deleteDraft',{activityId:payload.activityId,draftRevision:'revision-1'});assert.deepEqual(deleted.removed.drafts,[draft.id]);
+});
+test('submissions are idempotent under concurrent retries and remove only the submitted draft version',async()=>{
+  const rocio=await login('rocio');
+  await mutate(rocio.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',clientRevision:'phone-tab-version'});
+  const body={activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',hintsUsed:[],submissionId:'stable-submission-001',draftRevision:'phone-tab-version'};
+  const [first,second]=await Promise.all([mutate(rocio.cookie,'submitResponse',body),mutate(rocio.cookie,'submitResponse',body)]);
+  assert.equal(first.id,second.id);assert.equal(first.autoResult,'correct');assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM assignments').get().n,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,0);
+  assert.ok(!JSON.stringify(first).includes('_submissionNonce'));assert.ok(!JSON.stringify(first).includes('"_seed"'));
+  await mutate(rocio.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'Nuevo intento sin entregar',clientRevision:'newer-other-tab'});
+  await mutate(rocio.cookie,'submitResponse',body);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1,'retry must not delete a later draft');
+  await mutate(rocio.cookie,'submitResponse',{...body,activityId:'r-silaba-seis',answer:'Otro contenido'},409);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,1);
+  await mutate(rocio.cookie,'submitResponse',{...body,submissionId:'new-submission-002',draftRevision:'phone-tab-version'});assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1,'different submitted version cannot delete newer work');
+  assert.ok(!Object.hasOwn(first.patch.activities||{},'answer'));
+});
+test('a procedure-only open response and resource use await review and preserve structured work',async()=>{
+  const alejandra=await login('alejandra');const steps={data:'120 g; 40 cm³',question:'Densidad',calculation:'120 / 40',unitsAnswer:'3 g/cm³'};
+  const draft=await mutate(alejandra.cookie,'saveDraft',{activityId:'a-densidad-procedimiento',procedure:steps,clientRevision:'science-draft'});
+  const submitted=await mutate(alejandra.cookie,'submitResponse',{activityId:'a-densidad-procedimiento',answer:'',procedure:steps,selfAssessment:'Con alguna duda',submissionId:'procedure-submit',draftRevision:'science-draft'});
+  assert.equal(submitted.autoResult,null);assert.equal(submitted.patch.responses[0].reviewStatus,'pending');assert.deepEqual(submitted.patch.responses[0].procedure,steps);assert.deepEqual(submitted.removed.drafts,[draft.id]);
+  await mutate(alejandra.cookie,'submitResponse',{activityId:'a-densidad-masa',answer:'',procedure:steps,selfAssessment:'Fácil',submissionId:'closed-without-value'},400);
+  const resource=initialData.resources.find(r=>r.suggestedStudentIds.includes('alejandra'));
+  await mutate(alejandra.cookie,'saveDraft',{resourceId:resource.id,procedure:steps,clientRevision:'resource-draft'});
+  const payload={resourceId:resource.id,answer:'',procedure:steps,comment:'Lo explico en clase',selfAssessment:'Necesito ayuda',submissionId:'resource-submit',draftRevision:'resource-draft'};
+  const one=await mutate(alejandra.cookie,'useResource',payload),again=await mutate(alejandra.cookie,'useResource',payload);assert.equal(one.id,again.id);assert.equal(one.patch.responses[0].autoResult,null);assert.deepEqual(one.patch.responses[0].procedure,steps);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,0);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM observations').get().n,0);assert.ok((await (await data.GET(request('/api/data',{cookie:alejandra.cookie}))).json()).skills.every(s=>!s.lastCheck));
+});
+test('word collections preserve accents and enforce ownership for creation, edits and deletion',async()=>{
+  const rocio=await login('rocio'),alejandra=await login('alejandra');
+  const word=await mutate(rocio.cookie,'upsertWord',{id:'rocio-word',original:'rocio',corrected:'Rocío',reason:'Hiato con í tónica',sentence:'Rocío escribió su nombre.',reviewDate:'2026-11-20',activityId:'r-hiatos-diptongos',privateNotes:'ignored'});
+  assert.equal(word.patch.word_entries[0].corrected,'Rocío');assert.ok(!Object.hasOwn(word.patch.word_entries[0],'privateNotes'));
+  await mutate(alejandra.cookie,'upsertWord',{id:word.id,original:'x',corrected:'y'},403);await mutate(alejandra.cookie,'deleteWord',{id:word.id},403);await mutate(rocio.cookie,'upsertWord',{id:word.id,studentId:'alejandra'},403);
+  const own=(await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json()).word_entries;assert.equal(own.length,1);assert.equal((await (await data.GET(request('/api/data',{cookie:alejandra.cookie}))).json()).word_entries.length,0);
+  const updated=await mutate(rocio.cookie,'upsertWord',{id:word.id,reason:'Explicación revisada'});assert.equal(updated.patch.word_entries[0].reason,'Explicación revisada');
+  assert.deepEqual((await mutate(rocio.cookie,'deleteWord',{id:word.id})).removed.word_entries,[word.id]);
+});
+test('preferences are bounded, owned and exposed only through the public profile whitelist',async()=>{
+  const rocio=await login('rocio'),teacher=await login('teacher',pin);const resource=initialData.resources.find(r=>r.suggestedStudentIds.includes('rocio')),other=initialData.resources.find(r=>r.suggestedStudentIds.includes('alejandra')&&!r.suggestedStudentIds.includes('rocio'));
+  const result=await mutate(rocio.cookie,'updatePreferences',{studentId:'rocio',color:'rose',avatar:'planet',favoriteResourceIds:[resource.id],name:'Forbidden name',priorities:['Forbidden priority']});assert.equal(result.patch.students[0].color,'rose');assert.notEqual(result.patch.students[0].name,'Forbidden name');
+  await mutate(rocio.cookie,'updatePreferences',{studentId:'alejandra',color:'rose'},403);await mutate(rocio.cookie,'updatePreferences',{color:'arbitrary-css'},400);await mutate(rocio.cookie,'updatePreferences',{favoriteResourceIds:[other.id]},403);
+  await mutate(teacher.cookie,'updateStudent',{id:'rocio',pinnedResourceIds:[resource.id]});const snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.equal(snapshot.resources.find(r=>r.id===resource.id).pinned,true);
+  const alejandra=await login('alejandra');await mutate(alejandra.cookie,'updatePreferences',{color:'teal',avatar:'book'});
+  const publicResponse=await profiles.GET(),publicData=await publicResponse.json();assert.equal(publicResponse.status,200);assert.deepEqual(publicData.map(p=>p.id),['rocio','alejandra']);assert.ok(publicData.every(p=>Object.keys(p).sort().join(',')==='avatar,color,id,level,name'));assert.equal(publicData.find(p=>p.id==='rocio').avatar,'planet');
+  const teacherSnapshot=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.deepEqual(teacherSnapshot.students.map(p=>p.id),['rocio','alejandra']);
+});
+test('skill ownership cannot move and adapting starts a separate unassessed skill',async()=>{
+  const teacher=await login('teacher',pin);await mutate(teacher.cookie,'upsertSkill',{id:'r-tildes',studentId:'rocio',state:'Lo hago sola',checked:true,evidence:'Ejemplo propio de Rocío',observation:'Nota privada original'});
+  const before=sqlite.prepare("SELECT data FROM skills WHERE id='r-tildes'").get().data;await mutate(teacher.cookie,'upsertSkill',{id:'r-tildes',studentId:'alejandra'},400);assert.equal(sqlite.prepare("SELECT data FROM skills WHERE id='r-tildes'").get().data,before);
+  const copy=await mutate(teacher.cookie,'copySkill',{id:'r-tildes',studentId:'alejandra',title:'Nueva habilidad adaptada'}),skill=copy.patch.skills[0];assert.notEqual(copy.id,'r-tildes');assert.equal(skill.studentId,'alejandra');assert.equal(skill.state,'Por empezar');assert.equal(skill.lastCheck,null);assert.equal(skill.evidence,'');assert.equal(skill.observation,'');assert.equal(skill.reviewNeeded,false);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM observations WHERE json_extract(data,'$.skillId')=?").get(copy.id).n,0);
+});
+test('managed attachments can be hidden and restored without publishing private evidence',async()=>{
+  const teacher=await login('teacher',pin),rocio=await login('rocio'),alejandra=await login('alejandra');
+  globalThis.__arpAuthTestEnv.BUCKET={get:async()=>({body:'fixture file'})};
+  insertRecord('files',{id:'managed-file',studentId:'rocio',name:'Ficha.pdf',type:'application/pdf',key:'rocio/test-file',shared:true,detached:false,url:'/api/files/managed-file'});
+  insertRecord('resources',{id:'managed-resource',studentId:'rocio',title:'Ficha de clase',fileId:'managed-file'});
+  insertRecord('evidence',{id:'shared-evidence',studentId:'rocio',title:'Material compartido',fileId:'managed-file',shared:true});insertRecord('evidence',{id:'private-evidence',studentId:'rocio',title:'Evidencia privada',fileId:'managed-file',shared:false});
+  const fileGet=cookie=>fileRoute.GET(request('/api/files/managed-file',{cookie}),{params:Promise.resolve({id:'managed-file'})});
+  assert.equal((await fileGet(rocio.cookie)).status,200);assert.equal((await fileGet(alejandra.cookie)).status,403);
+  await mutate(rocio.cookie,'manageFile',{id:'managed-file',shared:false},403);
+  const hidden=await mutate(teacher.cookie,'manageFile',{id:'managed-file',shared:false});assert.equal(hidden.patch.resources[0].fileUnavailable,true);assert.ok(hidden.patch.evidence.some(e=>e.id==='private-evidence'&&e.shared===false));
+  let snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.ok(!snapshot.files.some(f=>f.id==='managed-file'));assert.ok(!snapshot.resources.some(r=>r.id==='managed-resource'));assert.ok(!snapshot.evidence.some(e=>e.fileId==='managed-file'));assert.equal((await fileGet(rocio.cookie)).status,403);
+  await mutate(teacher.cookie,'manageFile',{id:'managed-file',shared:true});snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.ok(snapshot.evidence.some(e=>e.id==='shared-evidence'));assert.ok(!snapshot.evidence.some(e=>e.id==='private-evidence'));
+  await mutate(teacher.cookie,'manageFile',{id:'managed-file',detached:true});assert.equal((await fileGet(rocio.cookie)).status,403);assert.equal((await fileGet(teacher.cookie)).status,200);
+  await mutate(teacher.cookie,'manageFile',{id:'managed-file',detached:false});assert.equal((await fileGet(rocio.cookie)).status,200);assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM evidence WHERE id='private-evidence'").get().data).shared,false);
+});
+test('minimal action patches retain canonical timestamps and delayed autosaves cannot overwrite a closed diary',async()=>{
+  const teacher=await login('teacher',pin),session={id:'patch-session',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'Antes',privateNotes:'PRIVATE',nextStep:'Antes'};
+  const first=await mutate(teacher.cookie,'upsertSession',session);assert.deepEqual(Object.keys(first.patch),['sessions']);assert.ok(!JSON.stringify(first).includes('"_seed"'));
+  const opened=first.patch.sessions[0];await mutate(teacher.cookie,'upsertSession',{...opened,content:'Autoguardado más reciente'});
+  const closed=await mutate(teacher.cookie,'closeSession',{...opened,content:'Resumen definitivo',nextStep:'Próximo paso definitivo'});const saved=closed.patch.sessions[0];assert.equal(saved.status,'realizada');assert.equal(saved.updatedAt,saved.closedAt);assert.deepEqual(Object.keys(closed.patch).sort(),['sessions','students']);
+  const delayed=await mutate(teacher.cookie,'upsertSession',{...opened,content:'Snapshot viejo que no debe reemplazar'});assert.equal(delayed.alreadyClosed,true);assert.equal(delayed.patch.sessions[0].content,'Resumen definitivo');
+  const replay=await mutate(teacher.cookie,'closeSession',{id:session.id,content:'Otro cierre'});assert.equal(replay.alreadyClosed,true);assert.equal(replay.patch.sessions[0].content,'Resumen definitivo');
+  const snapshot=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.ok(!JSON.stringify(snapshot).includes('"_seed"'));
+});
+test('assigning a primary or alternative exercise updates its own profile in the same atomic action',async()=>{
+  const teacher=await login('teacher',pin);const result=await mutate(teacher.cookie,'assignActivity',{id:'main-assignment',studentId:'rocio',activityId:'r-detective-tildes',category:'Para hacer en clase',setAsMain:true});assert.equal(result.patch.students[0].mainActivityId,'r-detective-tildes');assert.equal(result.patch.assignments[0].id,'main-assignment');
+  const alternative=await mutate(teacher.cookie,'assignActivity',{id:'alternative-assignment',studentId:'rocio',activityId:'r-tonica-telefono',category:'Opcionales',setAsAlternative:true});assert.equal(alternative.patch.students[0].alternativeActivityId,'r-tonica-telefono');
+  await mutate(teacher.cookie,'assignActivity',{studentId:'rocio',activityId:'a-densidad-procedimiento',category:'Para casa',setAsMain:true},400);assert.equal(JSON.parse(sqlite.prepare("SELECT data FROM students WHERE id='rocio'").get().data).mainActivityId,'r-detective-tildes');
+});
+test('a draft saved in another tab while submission commits is retained by its revision guard',async()=>{
+  const rocio=await login('rocio');const saved=await mutate(rocio.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',clientRevision:'old-tab-version'});
+  const adapter=globalThis.__arpAuthTestEnv.DB,original=adapter.batch.bind(adapter);let injected=false;
+  adapter.batch=async statements=>{if(!injected&&statements.some(s=>s.sql.includes('INTO responses'))){injected=true;const row=sqlite.prepare('SELECT data FROM drafts WHERE id=?').get(saved.id);const newer={...JSON.parse(row.data),answer:'Borrador nuevo de otra pestaña',clientRevision:'new-tab-version'};sqlite.prepare('UPDATE drafts SET data=? WHERE id=?').run(JSON.stringify(newer),saved.id);}return original(statements);};
+  const response=await mutate(rocio.cookie,'submitResponse',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',submissionId:'commit-race-response',draftRevision:'old-tab-version'});
+  assert.equal(response.patch.drafts[0].clientRevision,'new-tab-version');assert.equal(JSON.parse(sqlite.prepare('SELECT data FROM drafts WHERE id=?').get(saved.id).data).answer,'Borrador nuevo de otra pestaña');assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,1);
+});
+test('response, optional assignment and draft deletion roll back together on transaction failure',async()=>{
+  const rocio=await login('rocio');await mutate(rocio.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',clientRevision:'rollback-version'});
+  const adapter=globalThis.__arpAuthTestEnv.DB,original=adapter.batch.bind(adapter);
+  adapter.batch=statements=>original(statements.map(s=>s.sql.startsWith('DELETE FROM drafts')?{run:async()=>{throw new Error('simulated transaction failure');}}:s));
+  await mutate(rocio.cookie,'submitResponse',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',submissionId:'rollback-response',draftRevision:'rollback-version'},500);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,0);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM assignments').get().n,0);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1);
+});
+test('concurrent reuse of one submission identity for different activities cannot create a second assignment',async()=>{
+  const rocio=await login('rocio');const one={activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Fácil',submissionId:'colliding-submission'},two={...one,activityId:'r-silaba-seis',answer:'Mi explicación'};
+  const results=await Promise.all([action.POST(request('/api/action',{cookie:rocio.cookie,body:{action:'submitResponse',data:one}})),action.POST(request('/api/action',{cookie:rocio.cookie,body:{action:'submitResponse',data:two}}))]);assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM assignments').get().n,1);
+});
+test('attachment records created before the action collector reach the teacher file list through affected patches',async()=>{
+  const teacher=await login('teacher',pin);insertRecord('files',{id:'fresh-upload',studentId:'rocio',name:'Foto.png',type:'image/png',key:'rocio/fresh',shared:true,url:'/api/files/fresh-upload'});
+  const evidence=await mutate(teacher.cookie,'saveEvidence',{studentId:'rocio',fileId:'fresh-upload',title:'Foto de clase',shared:true});assert.equal(evidence.patch.files[0].id,'fresh-upload');assert.equal(evidence.patch.evidence[0].fileId,'fresh-upload');
+  const resource=await mutate(teacher.cookie,'upsertResource',{id:'fresh-resource',studentId:'rocio',fileId:'fresh-upload',title:'Ficha compartida',type:'Foto',instructions:'Observa el esquema'});assert.equal(resource.patch.files[0].id,'fresh-upload');assert.equal(resource.patch.resources[0].fileUnavailable,false);
+  const rocio=await login('rocio'),exam=await mutate(rocio.cookie,'upsertExam',{id:'patched-exam',title:'Examen',date:'2026-11-20'});assert.equal(exam.patch.exams[0].id,'patched-exam');assert.deepEqual((await mutate(rocio.cookie,'deleteExam',{id:'patched-exam'})).removed.exams,['patched-exam']);
+});
+test('a session closed between autosave read and write reports alreadyClosed without losing the winning diary',async()=>{
+  const teacher=await login('teacher',pin);await mutate(teacher.cookie,'upsertSession',{id:'between-read-write',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'Versión en curso'});
+  const original=D1Statement.prototype.run;let injected=false;
+  D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('INSERT INTO sessions')&&this.bindings[0]==='between-read-write'){injected=true;const current=JSON.parse(sqlite.prepare("SELECT data FROM sessions WHERE id='between-read-write'").get().data),now=new Date().toISOString();sqlite.prepare("UPDATE sessions SET data=?,updated_at=? WHERE id='between-read-write'").run(JSON.stringify({...current,status:'realizada',content:'Cierre ganador',closedAt:now,updatedAt:now}),now);}return original.call(this);};
+  try{const result=await mutate(teacher.cookie,'upsertSession',{id:'between-read-write',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'Autosave rezagado'});assert.equal(result.alreadyClosed,true);assert.equal(result.patch.sessions[0].status,'realizada');assert.equal(result.patch.sessions[0].content,'Cierre ganador');}finally{D1Statement.prototype.run=original;}
+});
+test('draft saves use compare-and-swap and stale clients cannot overwrite or resurrect another version',async()=>{
+  const rocio=await login('rocio'),target={activityId:'r-tonica-telefono'};
+  const first=await mutate(rocio.cookie,'saveDraft',{...target,answer:'Primera pestaña',clientRevision:'first-revision',baseRevision:''});
+  const conflicting=await mutate(rocio.cookie,'saveDraft',{...target,answer:'Segunda pestaña rezagada',clientRevision:'second-revision',baseRevision:''});assert.equal(conflicting.conflict,true);assert.equal(conflicting.patch.drafts[0].answer,'Primera pestaña');
+  const replay=await mutate(rocio.cookie,'saveDraft',{...target,answer:'Payload alterado del mismo retry',clientRevision:'first-revision',baseRevision:''});assert.equal(replay.alreadySaved,true);assert.equal(replay.patch.drafts[0].answer,'Primera pestaña');
+  const next=await mutate(rocio.cookie,'saveDraft',{...target,answer:'Versión acordada',clientRevision:'third-revision',baseRevision:'first-revision'});assert.equal(next.patch.drafts[0].answer,'Versión acordada');
+  await mutate(rocio.cookie,'deleteDraft',{...target,draftRevision:'third-revision'});
+  const resurrect=await mutate(rocio.cookie,'saveDraft',{...target,answer:'No debe resucitar',clientRevision:'fourth-revision',baseRevision:'third-revision'});assert.equal(resurrect.conflict,true);assert.deepEqual(resurrect.removed.drafts,[first.id]);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,0);
+  const competing=await Promise.all([mutate(rocio.cookie,'saveDraft',{...target,answer:'A',clientRevision:'new-a',baseRevision:''}),mutate(rocio.cookie,'saveDraft',{...target,answer:'B',clientRevision:'new-b',baseRevision:''})]);assert.equal(competing.filter(x=>x.conflict).length,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1);
 });

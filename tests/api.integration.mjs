@@ -14,13 +14,15 @@ async function api(profile,path,body,method=body?'POST':'GET') {
   const data=await response.json();return {status:response.status,data};
 }
 async function action(action,data) {const result=await api('teacher','/api/action',{action,data});assert.equal(result.status,200,JSON.stringify(result.data));return result.data;}
-let originalStudent,originalSkill;
+let originalStudent,originalSkill,originalStudentRow,originalSkillRow;
 try {
   assert.equal((await api('teacher','/api/data')).status,401);
   assert.equal((await api('teacher','/api/auth',{profile:'teacher',pin:'wrong-local-test'})).status,401);
   assert.equal((await api('teacher','/api/auth',{profile:'teacher',pin:process.env.ARP_TEST_PIN})).status,200);
   const baseline=(await api('teacher','/api/data')).data;
   originalStudent=baseline.students.find(x=>x.id==='rocio');originalSkill=baseline.skills.find(x=>x.id==='r-tildes');
+  // Preserve raw server metadata as well: teacher DTOs intentionally omit _seed.
+  for(const filename of globSync('.wrangler/state/v3/d1/**/*.sqlite')){const db=new DatabaseSync(filename);if(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='students'").get()){originalStudentRow=db.prepare("SELECT data,updated_at FROM students WHERE id='rocio'").get();originalSkillRow=db.prepare("SELECT data,updated_at FROM skills WHERE id='r-tildes'").get();}db.close();}
   await action('upsertSession',{id:'qa-session',studentId:'rocio',date:'2026-11-16',status:'preparada',duration:60,objective:'QA objective',content:'QA worked content',privateNotes:'QA PRIVATE SECRET',autonomy:'QA PRIVATE HELP',explanation:'QA shared example',nextStep:'QA next step'});
   assert.equal((await api('rocio','/api/auth',{profile:'rocio'})).status,200);
   let pupil=(await api('rocio','/api/data')).data;
@@ -88,8 +90,8 @@ try {
       for(const table of ['sessions','activities','assignments','exams','doubts','evidence','observations','responses']) {
         db.prepare(`DELETE FROM ${table} WHERE id LIKE 'qa-%' OR json_extract(data,'$.sessionId') LIKE 'qa-%' OR json_extract(data,'$.assignmentId') LIKE 'qa-%'`).run();
       }
-      if(originalStudent) db.prepare("UPDATE students SET data=?,updated_at=? WHERE id='rocio' AND json_extract(data,'$.nextStep') LIKE 'QA %'").run(JSON.stringify(originalStudent),originalStudent.updatedAt || new Date().toISOString());
-      if(originalSkill) db.prepare("UPDATE skills SET data=?,updated_at=? WHERE id='r-tildes' AND json_extract(data,'$.evidence')='QA shared evidence'").run(JSON.stringify(originalSkill),originalSkill.updatedAt || new Date().toISOString());
+      if(originalStudent) db.prepare("UPDATE students SET data=?,updated_at=? WHERE id='rocio' AND json_extract(data,'$.nextStep') LIKE 'QA %'").run(originalStudentRow?.data || JSON.stringify(originalStudent),originalStudentRow?.updated_at || originalStudent.updatedAt || new Date().toISOString());
+      if(originalSkill) db.prepare("UPDATE skills SET data=?,updated_at=? WHERE id='r-tildes' AND json_extract(data,'$.evidence')='QA shared evidence'").run(originalSkillRow?.data || JSON.stringify(originalSkill),originalSkillRow?.updated_at || originalSkill.updatedAt || new Date().toISOString());
       db.exec('COMMIT');
     }
     db.close();

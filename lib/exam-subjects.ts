@@ -17,5 +17,6 @@ export function examSubjectsForStudent(names:readonly string[],studentId:string)
 }
 
 export function retainedExamSubject(names:readonly string[],studentId:string,value:string):string{
-  return examSubjectsForStudent(names,studentId).find(name=>subjectKey(name)===subjectKey(value)) || '';
+  if(studentId==='rocio'&&subjectKey(value)===subjectKey(science))return '';
+  return examSubjectsForStudent(names,studentId).find(name=>subjectKey(name)===subjectKey(value)) || value.trim();
 }

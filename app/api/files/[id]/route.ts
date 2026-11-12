@@ -6,7 +6,7 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
   try {
     const profile=await requireProfile(request),{id}=await context.params;
     const file=await required("files",id);
-    if(profile!=="teacher" && (file.studentId!==profile || file.shared!==true))throw new HttpError(403,"No tienes acceso a este archivo.");
+    if(profile!=="teacher" && (file.studentId!==profile || file.shared!==true || file.detached===true))throw new HttpError(403,"No tienes acceso a este archivo.");
     if(!env.BUCKET)throw new HttpError(503,"El almacenamiento no está disponible.");
     const object=await env.BUCKET.get(file.key);if(!object)throw new HttpError(404,"El archivo no está disponible.");
     const inline=["image/jpeg","image/png","image/webp","image/gif"].includes(file.type);

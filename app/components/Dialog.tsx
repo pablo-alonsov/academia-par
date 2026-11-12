@@ -69,7 +69,11 @@ export default function Dialog({title,onClose,children,wide=false,className=''}:
     document.addEventListener('keydown',onKey,true);document.addEventListener('focusin',onFocus);
     return()=>{
       document.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus);window.removeEventListener('resize',updateViewport);window.visualViewport?.removeEventListener('resize',updateViewport);window.visualViewport?.removeEventListener('scroll',updateViewport);
-      deactivate();const previous=returnFocusRef.current;if(previous?.isConnected && !previous.closest('[inert]'))previous.focus({preventScroll:true});
+      deactivate();
+      const previous=returnFocusRef.current;
+      const canRestore=previous?.isConnected&&!previous.closest('[inert]')&&!previous.matches(':disabled')&&previous.getClientRects().length;
+      const fallback=dialogStack.at(-1)?.querySelector<HTMLElement>('button:not(:disabled),[tabindex="0"]')||document.getElementById('main');
+      (canRestore?previous:fallback)?.focus({preventScroll:true});
     };
   },[host]);
   if(!host)return null;

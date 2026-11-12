@@ -22,6 +22,8 @@ export const observations = entity("observations");
 export const doubts = entity("doubts");
 export const exams = entity("exams");
 export const files = entity("files");
+export const drafts = entity("drafts");
+export const wordEntries = entity("word_entries");
 export const appSessions = sqliteTable("app_sessions", {
   tokenHash: text("token_hash").primaryKey(),
   profile: text("profile").notNull(),
