@@ -146,3 +146,28 @@ input:disabled,select:disabled,textarea:disabled{opacity:.75}
 .avatar-color-violet{background:#e9e4ff;color:#51348e}.avatar-color-blue{background:#dceaff;color:#254f87}.avatar-color-teal{background:#d5eee8;color:#175b50}.avatar-color-rose{background:#f8dfe8;color:#853a58}.avatar-color-amber{background:#f8eac9;color:#72501b}
 .avatar{transition:background .35s ease,color .35s ease}
 @media(max-width:600px){.field,input,select,textarea{font-size:16px}.page-heading p{font-size:14px}.eyebrow{font-size:11px}}
+
+/* Mobile browser chrome, safe areas and touch layouts (also iPad). */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+.profiles-screen,.app-shell{min-height:100vh;min-height:100dvh}
+.sidebar{height:100vh;height:100dvh;padding-top:max(30px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));padding-left:max(18px,env(safe-area-inset-left))}
+.profiles-header{padding-left:max(22px,env(safe-area-inset-left));padding-right:max(22px,env(safe-area-inset-right));padding-top:max(22px,env(safe-area-inset-top))}
+.profile-main{padding-left:max(22px,env(safe-area-inset-left));padding-right:max(22px,env(safe-area-inset-right));padding-bottom:env(safe-area-inset-bottom)}
+.workspace-footer{padding-bottom:max(20px,env(safe-area-inset-bottom))}
+.modal-backdrop,.drawer-backdrop{-webkit-backdrop-filter:blur(5px)}
+@media(max-width:900px),(pointer:coarse){
+ .topbar{position:sticky;top:0;background:var(--surface);padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-top:max(9px,env(safe-area-inset-top));padding-bottom:9px;height:auto;min-height:75px}
+ .main-content{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+ html{scroll-padding-top:calc(var(--arp-header-height,75px) + 12px)}
+}
+@media(max-width:600px){.topbar{min-height:104px}}
+html body :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font-size:16px}
+@media(hover:none){.btn:hover,.profile-card:hover,.sv-activity-card:hover,.sv-session-card:hover,.back-to-top:hover{transform:none}}
+@media(max-width:1200px) and (max-height:600px){
+ .app-shell,.app-shell.is-collapsed{grid-template-columns:minmax(0,1fr)}
+ .topbar{position:sticky;top:0;height:auto;min-height:75px;background:var(--surface);padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}
+ .sidebar{position:fixed;left:0;top:0;width:min(300px,calc(100vw - 48px));transform:translateX(-100%);visibility:hidden}
+ .sidebar.is-open{transform:none;visibility:visible}
+ .collapse-btn{display:none}
+ .is-collapsed .sidebar .brand>span:last-child,.is-collapsed .workspace-label,.is-collapsed .nav-item span{display:initial}
+}

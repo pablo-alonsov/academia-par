@@ -14,3 +14,8 @@
 .arp-dialog :is(button,input,select,textarea,a):focus-visible{outline:3px solid var(--primary);outline-offset:2px}
 .arp-dialog-content>form:first-child{margin-top:0}
 @media(max-width:600px){.arp-modal-backdrop.modal-backdrop{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}.arp-dialog.modal{border-radius:16px}.arp-dialog-header.card-head{padding:14px 16px;gap:8px}.arp-dialog-header h2{font-size:20px}.arp-dialog-content{padding:16px}.arp-dialog-content :is(.form-grid,.grid-2,.grid-3){grid-template-columns:minmax(0,1fr)}.arp-dialog-content :is(input:not([type=checkbox]):not([type=radio]),textarea,select){font-size:16px}.arp-dialog-content .field{font-size:14px}}
+
+.arp-modal-backdrop[data-compact-viewport=true]{align-items:flex-start;padding-top:max(4px,env(safe-area-inset-top));padding-bottom:max(4px,env(safe-area-inset-bottom))}
+.arp-modal-backdrop[data-compact-viewport=true] .arp-dialog-header{padding:8px 12px}
+.arp-modal-backdrop[data-compact-viewport=true] .arp-dialog-header h2{font-size:18px}
+.arp-modal-backdrop[data-compact-viewport=true] .arp-dialog-content{padding:12px}

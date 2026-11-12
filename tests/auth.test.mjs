@@ -5,6 +5,7 @@ import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import ts from 'typescript';
+import {png,docx,heif} from './upload-fixtures.mjs';
 
 // Invoke the actual route handlers with production-like HTTPS Requests. The only
 // substituted dependency is the Cloudflare binding, backed by real in-memory SQL.
@@ -42,6 +43,7 @@ const data=await import('../app/api/data/route.ts');
 const action=await import('../app/api/action/route.ts');
 const profiles=await import('../app/api/profiles/route.ts');
 const fileRoute=await import('../app/api/files/[id]/route.ts');
+const uploadRoute=await import('../app/api/files/route.ts');
 const {hashPin,digest}=await import('../lib/server-auth.ts');
 const {seed}=await import('../lib/server-data.ts');
 const {initialData}=await import('../lib/seed.ts');
@@ -55,10 +57,12 @@ beforeEach(()=>{
   for(const name of readdirSync(new URL('../drizzle/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort()) sqlite.exec(readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
   globalThis.__arpAuthTestEnv.DB=new D1Adapter(sqlite);
   globalThis.__arpAuthTestEnv.TEACHER_PIN_HASH=pinHash;
+  delete globalThis.__arpAuthTestEnv.BUCKET;
 });
 afterEach(()=>sqlite.close());
-function request(path,{cookie,body,identity,siteOrigin=origin}={}) {
+function request(path,{cookie,body,identity,siteOrigin=origin,expectedProfile}={}) {
   const headers={};if(cookie)headers.Cookie=cookie;if(identity)headers['oai-authenticated-user-id']=identity;
+  if(expectedProfile!==undefined)headers['X-ARP-Profile']=expectedProfile;
   if(body){headers['Content-Type']='application/json';headers.Origin=siteOrigin;}
   return new Request(origin+path,{method:body?'POST':'GET',headers,...(body?{body:JSON.stringify(body)}:{})});
 }
@@ -368,7 +372,7 @@ test('minimal action patches retain canonical timestamps and delayed autosaves c
   const teacher=await login('teacher',pin),session={id:'patch-session',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'Antes',privateNotes:'PRIVATE',nextStep:'Antes'};
   const first=await mutate(teacher.cookie,'upsertSession',session);assert.deepEqual(Object.keys(first.patch),['sessions']);assert.ok(!JSON.stringify(first).includes('"_seed"'));
   const opened=first.patch.sessions[0];await mutate(teacher.cookie,'upsertSession',{...opened,content:'Autoguardado más reciente'});
-  const closed=await mutate(teacher.cookie,'closeSession',{...opened,content:'Resumen definitivo',nextStep:'Próximo paso definitivo'});const saved=closed.patch.sessions[0];assert.equal(saved.status,'realizada');assert.equal(saved.updatedAt,saved.closedAt);assert.deepEqual(Object.keys(closed.patch).sort(),['sessions','students']);
+  const closed=await mutate(teacher.cookie,'closeSession',{...opened,content:'Resumen definitivo',nextStep:'Próximo paso definitivo'});const saved=closed.patch.sessions[0];assert.equal(saved.status,'realizada');assert.equal(saved.updatedAt,saved.closedAt);assert.ok(saved.updatedAt>opened.updatedAt);assert.deepEqual(Object.keys(closed.patch).sort(),['sessions','students']);
   const delayed=await mutate(teacher.cookie,'upsertSession',{...opened,content:'Snapshot viejo que no debe reemplazar'});assert.equal(delayed.alreadyClosed,true);assert.equal(delayed.patch.sessions[0].content,'Resumen definitivo');
   const replay=await mutate(teacher.cookie,'closeSession',{id:session.id,content:'Otro cierre'});assert.equal(replay.alreadyClosed,true);assert.equal(replay.patch.sessions[0].content,'Resumen definitivo');
   const snapshot=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.ok(!JSON.stringify(snapshot).includes('"_seed"'));
@@ -417,4 +421,63 @@ test('draft saves use compare-and-swap and stale clients cannot overwrite or res
   await mutate(rocio.cookie,'deleteDraft',{...target,draftRevision:'third-revision'});
   const resurrect=await mutate(rocio.cookie,'saveDraft',{...target,answer:'No debe resucitar',clientRevision:'fourth-revision',baseRevision:'third-revision'});assert.equal(resurrect.conflict,true);assert.deepEqual(resurrect.removed.drafts,[first.id]);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,0);
   const competing=await Promise.all([mutate(rocio.cookie,'saveDraft',{...target,answer:'A',clientRevision:'new-a',baseRevision:''}),mutate(rocio.cookie,'saveDraft',{...target,answer:'B',clientRevision:'new-b',baseRevision:''})]);assert.equal(competing.filter(x=>x.conflict).length,1);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1);
+});
+
+function memoryBucket(){const objects=new Map();let puts=0;globalThis.__arpAuthTestEnv.BUCKET={async put(key,bytes){puts++;objects.set(key,Uint8Array.from(bytes));},async get(key){const bytes=objects.get(key);return bytes?{body:bytes,size:bytes.length}:null;},async delete(key){objects.delete(key);}};return {objects,get puts(){return puts}};}
+async function upload(cookie,{bytes=png,name='foto.png',type='image/png',studentId='rocio',uploadId,sessionId,expectedProfile}={}){const body=new FormData();body.set('file',new File([bytes],name,{type}));body.set('studentId',studentId);if(uploadId!==undefined)body.set('uploadId',uploadId);if(sessionId)body.set('sessionId',sessionId);return uploadRoute.POST(new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin,Cookie:cookie,...(expectedProfile===undefined?{}:{'X-ARP-Profile':expectedProfile})},body}));}
+
+test('optional profile headers reject stale mobile tabs before any read, write or upload',async()=>{
+ const {cookie}=await login('alejandra'),bucket=memoryBucket();
+ const read=await data.GET(request('/api/data',{cookie,expectedProfile:'rocio'}));assert.equal(read.status,409);assert.equal(read.headers.get('X-ARP-Profile-Changed'),'true');assert.equal((await read.json()).code,'PROFILE_CHANGED');
+ const write=await action.POST(request('/api/action',{cookie,expectedProfile:'rocio',body:{action:'saveDoubt',data:{question:'Stale question'}}}));assert.equal(write.status,409);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM doubts').get().n,0);
+ assert.equal((await upload(cookie,{studentId:'alejandra',expectedProfile:'rocio'})).status,409);assert.equal(bucket.puts,0);
+ assert.equal((await fileRoute.GET(request('/api/files/missing',{cookie,expectedProfile:'rocio'}),{params:Promise.resolve({id:'missing'})})).status,409);
+ assert.equal((await data.GET(request('/api/data',{cookie,expectedProfile:'alejandra'}))).status,200);assert.equal((await data.GET(request('/api/data',{cookie}))).status,200);
+});
+test('mobile provider MIME is normalized from bytes and original HEIC downloads stay protected',async()=>{
+ const rocio=await login('rocio'),alejandra=await login('alejandra');memoryBucket();
+ const photo=await upload(rocio.cookie,{type:'',name:'Rocío cámara.png'});assert.equal(photo.status,200);const image=await photo.json();assert.equal(image.type,'image/png');
+ const downloaded=await fileRoute.GET(request(image.url,{cookie:rocio.cookie}),{params:Promise.resolve({id:image.id})});assert.equal(downloaded.status,200);assert.equal(downloaded.headers.get('Content-Length'),String(png.length));assert.equal(downloaded.headers.get('Content-Type'),'image/png');assert.match(downloaded.headers.get('Content-Disposition'),/inline; filename="[\x20-\x7e]+"; filename\*=UTF-8''Roc%C3%ADo/);assert.deepEqual(new Uint8Array(await downloaded.arrayBuffer()),new Uint8Array(png));
+ for(const [bytes,name,type,expected]of [[docx,'trabajo.docx','application/octet-stream','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],[Buffer.from('Explicación con tildes'),'notas.txt','','text/plain'],[heif(),'foto.heic','image/heic','image/heic']]){const response=await upload(rocio.cookie,{bytes,name,type});assert.equal(response.status,200);const item=await response.json();assert.equal(item.type,expected);const get=await fileRoute.GET(request(item.url,{cookie:rocio.cookie}),{params:Promise.resolve({id:item.id})});assert.match(get.headers.get('Content-Disposition'),/^attachment;/);assert.equal(get.headers.get('X-Content-Type-Options'),'nosniff');assert.equal((await fileRoute.GET(request(item.url,{cookie:alejandra.cookie}),{params:Promise.resolve({id:item.id})})).status,403);}
+ const before=sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n;
+ assert.equal((await upload(rocio.cookie,{bytes:Buffer.from('<svg><script>bad</script></svg>'),name:'photo.png',type:'image/png'})).status,400);
+ assert.equal((await upload(rocio.cookie,{studentId:'alejandra'})).status,403);assert.equal((await upload(rocio.cookie,{bytes:new Uint8Array(8*1024*1024+1),name:'large.jpg',type:'image/jpeg'})).status,413);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,before);
+});
+test('stable upload identities deduplicate lost responses and concurrent retries without overwriting content',async()=>{
+ const rocio=await login('rocio'),alejandra=await login('alejandra'),bucket=memoryBucket(),uploadId=crypto.randomUUID();
+ const first=await upload(rocio.cookie,{uploadId}),firstData=await first.json();assert.equal(first.status,200);assert.equal(bucket.puts,1);
+ const repeated=await upload(rocio.cookie,{uploadId}),repeatData=await repeated.json();assert.equal(repeated.status,200);assert.equal(repeatData.id,firstData.id);assert.equal(repeatData.alreadyUploaded,true);assert.equal(bucket.puts,1);
+ assert.equal((await upload(rocio.cookie,{uploadId,bytes:Buffer.from('Otro texto'),name:'otro.txt',type:''})).status,409);assert.equal(bucket.puts,1);
+ const other=await (await upload(alejandra.cookie,{uploadId,studentId:'alejandra'})).json();assert.notEqual(other.id,firstData.id);
+ const concurrentId=crypto.randomUUID(),concurrent=await Promise.all([upload(rocio.cookie,{uploadId:concurrentId}),upload(rocio.cookie,{uploadId:concurrentId})]);assert.ok(concurrent.every(r=>r.status===200));const rows=await Promise.all(concurrent.map(r=>r.json()));assert.equal(rows[0].id,rows[1].id);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,3);assert.equal(bucket.objects.size,3);
+ const collisionId=crypto.randomUUID(),collision=await Promise.all([upload(rocio.cookie,{uploadId:collisionId}),upload(rocio.cookie,{uploadId:collisionId,bytes:Buffer.from('Texto alternativo'),name:'notas.txt',type:''})]);assert.deepEqual(collision.map(r=>r.status).sort(),[200,409]);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,4);assert.equal(bucket.objects.size,4);
+ assert.equal((await upload(rocio.cookie,{uploadId:'invalid'})).status,400);
+});
+test('doubt retries retain one own record and never reopen resolved feedback',async()=>{
+ const rocio=await login('rocio'),alejandra=await login('alejandra'),teacher=await login('teacher',pin),submissionId=crypto.randomUUID(),question='¿Por qué lleva tilde Rocío?';
+ const both=await Promise.all([mutate(rocio.cookie,'saveDoubt',{submissionId,question}),mutate(rocio.cookie,'saveDoubt',{submissionId,question})]);assert.equal(both[0].id,both[1].id);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM doubts').get().n,1);
+ await mutate(teacher.cookie,'resolveDoubt',{id:both[0].id,reply:'Revisa el hiato'});const retry=await mutate(rocio.cookie,'saveDoubt',{submissionId,question});assert.equal(retry.alreadySubmitted,true);assert.equal(retry.patch.doubts[0].status,'resolved');assert.equal(retry.patch.doubts[0].reply,'Revisa el hiato');
+ await mutate(rocio.cookie,'saveDoubt',{submissionId,question:'Texto cambiado'},409);await mutate(rocio.cookie,'saveDoubt',{submissionId,question,studentId:'alejandra'},403);
+ const separate=await mutate(alejandra.cookie,'saveDoubt',{submissionId,question});assert.notEqual(separate.id,both[0].id);await mutate(rocio.cookie,'saveDoubt',{question:'Legacy request'});assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM doubts').get().n,3);
+});
+test('session autosave CAS preserves another device both before reading and at the SQL write boundary',async()=>{
+ const teacher=await login('teacher',pin),created=await mutate(teacher.cookie,'upsertSession',{id:'cas-session',studentId:'rocio',date:'2026-11-16',status:'preparada',duration:60,content:'Initial'}),base=created.patch.sessions[0].updatedAt;
+ const winning=await mutate(teacher.cookie,'upsertSession',{id:'cas-session',baseUpdatedAt:base,content:'PC change'});assert.ok(winning.patch.sessions[0].updatedAt>base);assert.equal(winning.patch.sessions[0].baseUpdatedAt,undefined);
+ const stale=await mutate(teacher.cookie,'upsertSession',{id:'cas-session',baseUpdatedAt:base,content:'Old phone change'});assert.equal(stale.conflict,true);assert.equal(stale.patch.sessions[0].content,'PC change');
+ const current=winning.patch.sessions[0].updatedAt,original=D1Statement.prototype.run;let injected=false;
+ D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('INSERT INTO sessions')&&this.bindings[0]==='cas-session'){injected=true;const old=JSON.parse(sqlite.prepare("SELECT data FROM sessions WHERE id='cas-session'").get().data),updatedAt=new Date(Date.parse(current)+1000).toISOString();sqlite.prepare("UPDATE sessions SET data=?,updated_at=? WHERE id='cas-session'").run(JSON.stringify({...old,content:'Tablet won at commit',updatedAt}),updatedAt);}return original.call(this);};
+ try{const race=await mutate(teacher.cookie,'upsertSession',{id:'cas-session',baseUpdatedAt:current,content:'Phone raced'});assert.equal(race.conflict,true);assert.equal(race.patch.sessions[0].content,'Tablet won at commit');}finally{D1Statement.prototype.run=original;}
+ const legacy=await mutate(teacher.cookie,'upsertSession',{id:'cas-session',content:'Explicit legacy write'});assert.equal(legacy.patch.sessions[0].content,'Explicit legacy write');
+});
+
+test('same-millisecond autosaves and closure retain strictly increasing canonical versions',async()=>{
+ const teacher=await login('teacher',pin),RealDate=Date,fixed=Date.now();
+ globalThis.Date=class extends RealDate{constructor(...args){if(args.length)super(...args);else super(fixed);}static now(){return fixed;}};
+ try{
+  const created=await mutate(teacher.cookie,'upsertSession',{id:'fixed-clock-session',studentId:'rocio',date:'2026-11-16',status:'en curso',duration:60,content:'First'}),first=created.patch.sessions[0];
+  const one=(await mutate(teacher.cookie,'upsertSession',{id:first.id,baseUpdatedAt:first.updatedAt,content:'Second'})).patch.sessions[0];assert.ok(one.updatedAt>first.updatedAt);
+  const two=(await mutate(teacher.cookie,'upsertSession',{id:first.id,baseUpdatedAt:one.updatedAt,content:'Third'})).patch.sessions[0];assert.ok(two.updatedAt>one.updatedAt);
+  const stale=await mutate(teacher.cookie,'upsertSession',{id:first.id,baseUpdatedAt:first.updatedAt,content:'Stale'});assert.equal(stale.conflict,true);assert.equal(stale.patch.sessions[0].content,'Third');
+  const closed=(await mutate(teacher.cookie,'closeSession',{id:first.id,content:'Final'})).patch.sessions[0];assert.ok(closed.updatedAt>two.updatedAt);assert.equal(closed.updatedAt,closed.closedAt);const row=sqlite.prepare('SELECT data,updated_at FROM sessions WHERE id=?').get(first.id);assert.equal(row.updated_at,closed.updatedAt);assert.equal(JSON.parse(row.data).updatedAt,closed.updatedAt);
+ }finally{globalThis.Date=RealDate;}
 });

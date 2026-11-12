@@ -99,7 +99,10 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="upsertSession") {
     const old=data.id?await get("sessions",data.id):null;
     if(old?.status==="realizada"){trackChange("sessions",old.id);return {id:old.id,alreadyClosed:true};}
+    const base=data.baseUpdatedAt===undefined?undefined:cleanString(data.baseUpdatedAt,100);
+    if(base!==undefined && base!==(old?.updatedAt || "")){if(data.id)trackChange("sessions",data.id);return {id:data.id,conflict:true};}
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID(),studentId:validateStudent(data.studentId || old?.studentId)};
+    delete item.baseUpdatedAt;
     date(item.date);
     if(!old && !isTrackingDate(item.date))throw new HttpError(400,`Las nuevas clases deben tener fecha del ${ACADEMY_START_DATE.split("-").reverse().join("/")} o posterior.`);
     if(!SESSION_STATES.includes(item.status || "por preparar")) throw new HttpError(400,"Estado de sesión no válido.");
@@ -109,10 +112,10 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     for(const key of ["activityId","alternativeActivityId"]) if(item[key]) {const activity=await required("activities",item[key]);if(!allowedContent(activity,item.studentId)) throw new HttpError(400,"La actividad pertenece a otra alumna.");}
     trackChange("sessions",item.id);
     if(old?.status!=="realizada") {
-      const now=new Date().toISOString();item.updatedAt=now;
+      const now=new Date(Math.max(Date.now(),(Date.parse(old?.updatedAt || "") || 0)+1)).toISOString();item.updatedAt=now;
       // A delayed autosave cannot reopen or overwrite a session already closed.
-      const written=await database().prepare("INSERT INTO sessions (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET student_id=excluded.student_id,data=excluded.data,updated_at=excluded.updated_at WHERE COALESCE(json_extract(sessions.data,'$.status'),'por preparar') != 'realizada'").bind(item.id,item.studentId,JSON.stringify(item),now).run();
-      if(written.meta.changes===0)return {id:item.id,alreadyClosed:true};
+      const written=await database().prepare("INSERT INTO sessions (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET student_id=excluded.student_id,data=excluded.data,updated_at=excluded.updated_at WHERE COALESCE(json_extract(sessions.data,'$.status'),'por preparar') != 'realizada' AND (? IS NULL OR sessions.updated_at=?)").bind(item.id,item.studentId,JSON.stringify(item),now,base ?? null,base ?? null).run();
+      if(written.meta.changes===0){const current=await get("sessions",item.id);return {id:item.id,...(current?.status==="realizada"?{alreadyClosed:true}:{conflict:true})};}
     }
     return {id:item.id};
   }
@@ -120,8 +123,9 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const old=await required("sessions",data.id);
     if(old.status==="realizada"){trackChange("sessions",old.id);trackChange("students",old.studentId);return {id:old.id,alreadyClosed:true};}
     const operationId=crypto.randomUUID();
-    const item:RecordData={...old,...data,id:old.id,studentId:old.studentId,status:"realizada",closedAt:new Date().toISOString(),closeOperationId:operationId};
-    item.updatedAt=item.closedAt;
+    const closedAt=new Date(Math.max(Date.now(),(Date.parse(old.updatedAt || "") || 0)+1)).toISOString();
+    const item:RecordData={...old,...data,id:old.id,studentId:old.studentId,status:"realizada",closedAt,closeOperationId:operationId};
+    item.updatedAt=closedAt;
     delete item.skillUpdate;
     if(!text(item.content || item.sharedSummary).trim()) throw new HttpError(400,"Resume brevemente qué habéis trabajado.");
     await required("students",old.studentId);
@@ -187,7 +191,11 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="saveDoubt") {
     const studentId=ownStudent(profile,data.studentId || profile);
     const question=text(data.question,5000);if(!question.trim()) throw new HttpError(400,"Escribe tu duda.");
-    const item=await put("doubts",{id:crypto.randomUUID(),studentId,question,status:"pending",createdAt:new Date().toISOString()});return {id:item.id};
+    if(data.submissionId!==undefined && (typeof data.submissionId!=="string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.submissionId)))throw new HttpError(400,"El identificador de la duda no es válido.");
+    const item={id:data.submissionId?`doubt:${studentId}:${data.submissionId.toLowerCase()}`:crypto.randomUUID(),studentId,question,status:"pending",createdAt:new Date().toISOString()};
+    const inserted=await recordStatement("doubts",item,true).run();const saved=await required("doubts",item.id);
+    if(saved.studentId!==studentId || saved.question!==question)throw new HttpError(409,"Esta duda ya se envió con otro texto. Abre una nueva duda para continuar.");
+    return {id:item.id,...(inserted.meta.changes?{}:{alreadySubmitted:true})};
   }
   if(action==="resolveDoubt") {
     const old=await required("doubts",data.id);await put("doubts",{...old,status:"resolved",reply:text(data.reply),resolvedAt:new Date().toISOString()});return {id:old.id};

@@ -4,10 +4,11 @@ import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {X} from 'lucide-react';
 import './dialog.css';
+import {lockPageScroll} from '@/lib/page-scroll';
+import {viewportFrame} from '@/lib/viewport-frame';
 
 const dialogStack:HTMLElement[]=[];
 const backgroundState=new Map<HTMLElement,{inert:boolean;hidden:string|null}>();
-let bodyState:{overflow:string;paddingRight:string;position:string;top:string;left:string;width:string;scrollX:number;scrollY:number;fixed:boolean}|null=null;
 function updateBackground(){
   const active=dialogStack.at(-1);
   for(const child of Array.from(document.body.children)){
@@ -18,17 +19,11 @@ function updateBackground(){
   if(!active)backgroundState.clear();
 }
 function activateDialog(host:HTMLElement,focus:()=>void){
-  if(!dialogStack.length){
-    const body=document.body,scrollbar=window.innerWidth-document.documentElement.clientWidth;
-    bodyState={overflow:body.style.overflow,paddingRight:body.style.paddingRight,position:body.style.position,top:body.style.top,left:body.style.left,width:body.style.width,scrollX:window.scrollX,scrollY:window.scrollY,fixed:window.matchMedia('(max-width:700px)').matches};
-    body.style.overflow='hidden';
-    if(scrollbar>0)body.style.paddingRight=`${parseFloat(getComputedStyle(body).paddingRight)+scrollbar}px`;
-    if(bodyState.fixed){body.style.position='fixed';body.style.top=`-${bodyState.scrollY}px`;body.style.left='0';body.style.width='100%';}
-  }
+  const unlock=lockPageScroll();
   dialogStack.push(host);focus();updateBackground();
   return()=>{
     const index=dialogStack.indexOf(host);if(index>=0)dialogStack.splice(index,1);updateBackground();
-    if(!dialogStack.length && bodyState){const saved=bodyState;Object.assign(document.body.style,{overflow:saved.overflow,paddingRight:saved.paddingRight,position:saved.position,top:saved.top,left:saved.left,width:saved.width});bodyState=null;if(saved.fixed)window.scrollTo(saved.scrollX,saved.scrollY);}
+    unlock();
   };
 }
 
@@ -63,12 +58,14 @@ export default function Dialog({title,onClose,children,wide=false,className=''}:
     const onFocus=(event:FocusEvent)=>{if(isTop() && event.target instanceof Node && !panel?.contains(event.target))(items()[0] || panel)?.focus({preventScroll:true});};
     const updateViewport=()=>{
       const viewport=window.visualViewport,style=backdropRef.current?.style;if(!style)return;
-      style.setProperty('--arp-viewport-height',`${viewport?.height || window.innerHeight}px`);style.setProperty('--arp-viewport-width',`${viewport?.width || window.innerWidth}px`);style.setProperty('--arp-viewport-top',`${viewport?.offsetTop || 0}px`);style.setProperty('--arp-viewport-left',`${viewport?.offsetLeft || 0}px`);
+      const frame=viewportFrame(viewport,window.innerWidth,window.innerHeight);if(backdropRef.current)backdropRef.current.dataset.compactViewport=String(frame.height<400);
+      style.setProperty('--arp-viewport-height',`${frame.height}px`);style.setProperty('--arp-viewport-width',`${frame.width}px`);style.setProperty('--arp-viewport-top',`${frame.top}px`);style.setProperty('--arp-viewport-left',`${frame.left}px`);
+      requestAnimationFrame(()=>{const active=document.activeElement,content=panel?.querySelector<HTMLElement>('.arp-dialog-content');if(!(active instanceof HTMLElement)||!active.matches('input,textarea,select')||!content?.contains(active))return;const field=active.getBoundingClientRect(),area=content.getBoundingClientRect(),space=area.height-24;if(field.height<=space){if(field.bottom>area.bottom-12)content.scrollTop+=field.bottom-area.bottom+12;else if(field.top<area.top+12)content.scrollTop-=area.top+12-field.top;}else if(field.bottom<area.top||field.top>area.bottom)content.scrollTop+=field.top-area.top-12;});
     };
-    updateViewport();window.addEventListener('resize',updateViewport);window.visualViewport?.addEventListener('resize',updateViewport);window.visualViewport?.addEventListener('scroll',updateViewport);
+    updateViewport();window.addEventListener('resize',updateViewport);window.addEventListener('orientationchange',updateViewport);panel?.addEventListener('focusin',updateViewport);window.visualViewport?.addEventListener('resize',updateViewport);window.visualViewport?.addEventListener('scroll',updateViewport);
     document.addEventListener('keydown',onKey,true);document.addEventListener('focusin',onFocus);
     return()=>{
-      document.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus);window.removeEventListener('resize',updateViewport);window.visualViewport?.removeEventListener('resize',updateViewport);window.visualViewport?.removeEventListener('scroll',updateViewport);
+      document.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus);window.removeEventListener('resize',updateViewport);window.removeEventListener('orientationchange',updateViewport);panel?.removeEventListener('focusin',updateViewport);window.visualViewport?.removeEventListener('resize',updateViewport);window.visualViewport?.removeEventListener('scroll',updateViewport);
       deactivate();
       const previous=returnFocusRef.current;
       const canRestore=previous?.isConnected&&!previous.closest('[inert]')&&!previous.matches(':disabled')&&previous.getClientRects().length;

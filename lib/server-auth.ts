@@ -7,12 +7,12 @@ export function database(): D1Database {
   if (!env.DB) throw new HttpError(503, "La base de datos no está disponible.");
   return env.DB;
 }
-export class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
+export class HttpError extends Error { constructor(public status: number, message: string, public code?: string) { super(message); } }
 export function json(value: unknown, status = 200, extra?: HeadersInit) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
 }
 export function fail(error: unknown) {
-  if (error instanceof HttpError) return json({error: error.message}, error.status);
+  if (error instanceof HttpError) return json({error: error.message,...(error.code?{code:error.code}:{})}, error.status,error.code==="PROFILE_CHANGED"?{"X-ARP-Profile-Changed":"true"}:undefined);
   console.error("ARP server operation failed", error instanceof Error ? error.message : "unknown");
   return json({error:"No se pudo guardar. Tus cambios no se han confirmado; vuelve a intentarlo."}, 500);
 }
@@ -45,7 +45,10 @@ export async function currentProfile(request: Request): Promise<Profile | null> 
   return row.profile;
 }
 export async function requireProfile(request: Request) {
-  const profile=await currentProfile(request); if(!profile) throw new HttpError(401,"Elige tu perfil para continuar."); return profile;
+  const profile=await currentProfile(request); if(!profile) throw new HttpError(401,"Elige tu perfil para continuar.");
+  const expected=request.headers.get("X-ARP-Profile");
+  if(expected!==null && expected!==profile)throw new HttpError(409,"El perfil ha cambiado en otra pestaña. Vuelve a elegirlo para continuar.","PROFILE_CHANGED");
+  return profile;
 }
 export function teacherOnly(profile: Profile) { if(profile!=="teacher") throw new HttpError(403,"Esta acción es exclusiva del panel docente."); }
 export function cookie(request:Request,token:string,maxAge=43200) {

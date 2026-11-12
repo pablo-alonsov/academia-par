@@ -104,6 +104,7 @@
 .teacher-draft-recovery h2{font-size:19px}
 .teacher-draft-recovery>.row{margin-top:17px}
 .teacher-recovery-warning{border-left:3px solid var(--amber);padding:8px 12px;font-size:12px;line-height:1.7}
+.teacher-close-draft-note{border-left:3px solid var(--primary);padding:9px 12px;margin-top:14px;font-size:14px;line-height:1.65;color:var(--muted)}
 .teacher-activity-picker{min-width:0;border:1px solid var(--line);border-radius:12px;padding:15px;background:var(--bg);margin-bottom:17px}
 .teacher-activity-picker .teacher-picker-filters .field{font-size:11px}
 .teacher-activity-picker>.field{margin-bottom:4px}

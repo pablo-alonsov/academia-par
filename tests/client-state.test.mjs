@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyDataPatch} from '../lib/data-patch.ts';
-import {authorizedFetch,setSessionRecovery,invalidateSessionRequests} from '../lib/client-request.ts';
+import {authorizedFetch,setSessionRecovery,invalidateSessionRequests,setRequestProfile} from '../lib/client-request.ts';
 import {examSubjectsForStudent,retainedExamSubject} from '../lib/exam-subjects.ts';
 
 test('subject options match each pupil and preserve existing custom subjects',()=>{
@@ -52,4 +52,20 @@ test('changing profile while re-entry is open cancels the retry',async()=>{
   setSessionRecovery(async()=>{invalidateSessionRequests()});
   try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'previous profile'}),/perfil ha cambiado/);assert.equal(calls,1)}
   finally{globalThis.fetch=original;setSessionRecovery()}
+});
+
+test('requests carry the expected profile and never silently retry a cookie scope mismatch',async()=>{
+  const original=globalThis.fetch;let calls=0,received;
+  globalThis.fetch=async(url,options)=>{calls++;received=options.headers.get('X-ARP-Profile');return new Response('{}',{status:409,headers:{'X-ARP-Profile-Changed':'true'}})};
+  setRequestProfile('rocio');
+  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'draft'}),/perfil ha cambiado/);assert.equal(received,'rocio');assert.equal(calls,1)}
+  finally{globalThis.fetch=original;setRequestProfile(null)}
+});
+test('hidden pages persist small requests with keepalive and do not open a password dialog',async()=>{
+  const original=globalThis.fetch,previousDocument=globalThis.document;let keepalive,recovered=0;
+  globalThis.document={visibilityState:'hidden'};
+  globalThis.fetch=async(url,options)=>{keepalive=options.keepalive;return new Response('{}',{status:401})};
+  setSessionRecovery(async()=>{recovered++});
+  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),/acceso ha caducado/);assert.equal(keepalive,true);assert.equal(recovered,0)}
+  finally{globalThis.fetch=original;setSessionRecovery();if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });

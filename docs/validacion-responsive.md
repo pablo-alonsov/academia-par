@@ -78,3 +78,35 @@ Validación en navegador con tamaños emulados; no son pruebas en dispositivos f
 Todos los registros de interfaz se identificaron como QA y se crearon únicamente en la base local. Las integraciones de API y archivos solo admiten loopback. La base local se restaura desde su copia previa al terminar; no se generan clases, respuestas ni logros de prueba en producción.
 
 Comprobación final: TypeScript y 62 pruebas automatizadas correctos; integraciones locales de API y R2 correctas. Restauración local verificada: 0 sesiones, entregas, comprobaciones, borradores o palabras de prueba, conservando 2 alumnas, 30 habilidades, 119 actividades y 21 recursos.
+
+## Compatibilidad de teléfonos e iPad · 12 de noviembre de 2026
+
+Referencia solicitada: iPhone 12 como modelo de iPhone más antiguo previsto, Android sin modelo concreto e iPad. La comprobación se ha realizado en Brave/Chromium mediante viewport emulado. No se dispone en este entorno de Safari/WebKit ni de dispositivos físicos. Las medidas son píxeles CSS y no simulan por sí solas el sistema operativo.
+
+| Recorrido | Viewports revisados |
+| --- | --- |
+| Alejandra, seis secciones, primero teléfonos (42 comprobaciones) | 320×568, 360×800, 390×844, 412×915, 430×932, 844×390, 956×440 |
+| Alejandra, seis secciones, después iPad y vista dividida (48 comprobaciones) | 768×1024, 1024×768, 820×1180, 1180×820, 1024×1366, 1366×1024, 507×834, 375×1024 |
+| Docente, cinco secciones en tableta (15 comprobaciones) | 768×1024, 1194×834, 507×834 |
+| Docente, cinco secciones en PC (10 comprobaciones) | 1440×900, 1920×1080 |
+
+No se detectó desbordamiento horizontal del documento en estas vistas ni campos visibles por debajo de 16 px. La región mensual del calendario mantiene su desplazamiento interno deliberado. La revisión anterior de Rocío y de ambos temas sigue documentada arriba.
+
+Cambios y recorridos específicos:
+
+- Meta viewport con `viewport-fit=cover`, áreas seguras y `interactive-widget=resizes-content` donde el navegador lo admite. Zoom disponible. La cabecera también se fija en iPad táctil ancho y el menú se adapta a teléfonos horizontales de hasta 1200 px y poca altura.
+- Ventanas ligadas a `VisualViewport`, con ajuste del desplazamiento interno al campo enfocado. Formulario de examen revisado además a 390×320 como aproximación de poca altura disponible: dentro del viewport, sin ensanchar el documento. No equivale a abrir un teclado de iOS.
+- Bloqueo de desplazamiento compartido entre menú y ventanas apiladas para conservar la posición de la página. Prefijo WebKit para el desenfoque y tamaños alternativos cuando no se admite `dvh`.
+- Respuesta de fracciones con botones «−» y «/»: inserción en el cursor, foco conservado, guardado, salida, recarga y recuperación. Entrega equivalente correcta y procedimiento pendiente de revisión; no se modifica automáticamente una habilidad.
+- Una pestaña antigua de Alejandra intenta guardar después de seleccionar Rocío en otra pestaña: recibe 409, se muestra el selector y no escribe en Rocío. Al volver a Alejandra, se conservan ambas versiones y se elige expresamente la que se guarda.
+- Salir a otra página y volver mediante el historial conserva el editor y permite guardar. No se afirma haber reproducido la suspensión de una aplicación por Android/iOS: el navegador de automatización mantuvo ambas pestañas con visibilidad `visible`.
+- Palabra original y corregida con autocorrección, mayúsculas automáticas y corrector desactivados. Recarga, recuperación explícita del formulario y guardado con fecha de revisión 20/11/2026 comprobados en Rocío.
+- Acceso local de Rocío caducado durante una edición: «Continuar y guardar» recupera el acceso, guarda una sola palabra editada y conserva frase y fecha. Menú docente abierto y cerrado al bajar por el banco: se libera el bloqueo de página; «Volver arriba» devuelve el foco a `main` y el scroll a cero.
+- Valoración docente pendiente recuperada tras guardar notas, salir y recargar en la misma pestaña. Se conservan habilidad, estado, evidencia y fecha. Un problema detectado con eventos del campo de fecha se corrigió mediante el componente compartido `DateInput`; la fecha se verificó también en D1 después de recuperar y cerrar. Cierre único confirmado como realizado.
+- Pruebas automatizadas y de API: 92 correctas y TypeScript sin errores. Incluyen versiones de sesión estrictamente crecientes, conflictos entre dispositivos, peticiones con perfil esperado, reintentos idempotentes de dudas y subidas, firmas y MIME de archivos, dimensiones de fotos y geometría del viewport. Cuatro pruebas de carreras verifican que una lectura completa lenta no reemplace una entrega reciente ni recupere el perfil anterior, también entre continuaciones de promesas. Integraciones locales de API y R2 correctas.
+
+Límites de validación: quedan sin verificar sobre hardware real Safari de iPhone/iPad, sus selectores de fecha, teclados, cámara, suspensión del sistema y decodificación HEIC. La subida desde el selector de archivos del navegador de automatización no pudo completarse porque la extensión no tiene acceso a URLs de archivo; no se ampliaron sus permisos. La validación de formato, persistencia, descarga y permisos sí se ejecutó en la integración local de R2. El procesamiento de fotos se comprobó con pruebas de tamaños y nombres, sin atribuirle una prueba real de cámara o conversión HEIC.
+
+Referencias primarias utilizadas para la adaptación: [viewport y teclado en Chrome](https://developer.chrome.com/blog/viewport-resize-behavior/), [áreas seguras en WebKit](https://webkit.org/blog/7929/designing-websites-for-iphone-x/), [HEIC y canvas en Safari 17](https://webkit.org/blog/14445/webkit-features-in-safari-17-0/), [teclado según inputmode](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/inputmode) y [limitaciones del MIME de Blob](https://developer.mozilla.org/en-US/docs/Web/API/Blob/type). El código detecta capacidades; no presupone que todos los Android o todas las versiones de iOS se comporten igual.
+
+Limpieza final: servidor local detenido y copia exacta inicial restaurada. Verificado: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero sesiones, respuestas, observaciones, exámenes, archivos, borradores o palabras de QA. Los registros de producción no se usan como fixtures de prueba.

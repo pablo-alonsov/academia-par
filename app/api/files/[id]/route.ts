@@ -10,7 +10,16 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
     if(!env.BUCKET)throw new HttpError(503,"El almacenamiento no está disponible.");
     const object=await env.BUCKET.get(file.key);if(!object)throw new HttpError(404,"El archivo no está disponible.");
     const inline=["image/jpeg","image/png","image/webp","image/gif"].includes(file.type);
-    return new Response(object.body,{headers:{"Content-Type":file.type,"Content-Disposition":`${inline?"inline":"attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox"}});
+    const fallback=String(file.name).normalize("NFKD").replace(/[^\x20-\x7e]|["\\/]/g,"_").trim() || "archivo";
+    const headers:Record<string,string>={"Content-Type":file.type,"Content-Disposition":`${inline?"inline":"attachment"}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox"};
+    const size=object.size ?? file.size;let body=object.body;
+    if(typeof size==="number" && Number.isSafeInteger(size) && size>=0){
+      headers["Content-Length"]=String(size);
+      // Workers ignores a manual length on an ordinary stream. Preserve streaming
+      // while making its known R2 length available to the HTTP runtime.
+      if(typeof FixedLengthStream!=="undefined" && body instanceof ReadableStream){const fixed=new FixedLengthStream(size);void body.pipeTo(fixed.writable).catch(()=>{});body=fixed.readable;}
+    }
+    return new Response(body,{headers});
   }catch(error){return fail(error);}
 }
 export async function DELETE(request:Request,context:{params:Promise<{id:string}>}) {
