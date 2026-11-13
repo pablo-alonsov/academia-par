@@ -13,7 +13,7 @@ import {lockPageScroll} from '@/lib/page-scroll';
 import {freshSnapshot} from '@/lib/fresh-snapshot';
 import ProfileAvatar from './ProfileAvatar';
 
-const STUDENT_NAV=[{name:'Inicio',icon:Home},{name:'Mi camino',icon:Compass},{name:'Practicar',icon:Sparkles},{name:'Mis clases',icon:NotebookPen},{name:'Biblioteca',icon:Library},{name:'Calendario',icon:CalendarDays}];
+const STUDENT_NAV=[{name:'Inicio',icon:Home},{name:'Mi camino',icon:Compass},{name:'Practicar',icon:Sparkles},{name:'Mis clases',icon:NotebookPen},{name:'Calendario',icon:CalendarDays}];
 const TEACHER_NAV=[{name:'Hoy y esta semana',icon:LayoutDashboard},{name:'Alumnas',icon:Users},{name:'Banco de actividades',icon:FolderOpen},{name:'Biblioteca',icon:Library},{name:'Calendario',icon:CalendarDays}];
 export const formatDate=(v:string,opts:any={day:'numeric',month:'short'})=>v?new Intl.DateTimeFormat('es-ES',opts).format(new Date(v.slice(0,10)+'T12:00:00')):'Sin fecha';
 export function Avatar({id,size='',color,avatar,avatarUrl}:{id:string,size?:string;color?:string;avatar?:string;avatarUrl?:string}){return <ProfileAvatar student={{id,color,avatar,avatarUrl}} size={size==='large'?'large':'small'} className={`avatar avatar-${id} ${size}`}/>}

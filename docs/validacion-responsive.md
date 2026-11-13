@@ -159,3 +159,24 @@ Recorridos finales comprobados en local:
 Al terminar se detuvo el servidor local y se restauró la copia exacta inicial de D1: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero sesiones, respuestas, archivos, exámenes o borradores de QA. Estos fixtures y resultados corresponden al entorno local. La publicación y su comprobación posterior siguen pendientes.
 
 La validación visual de esta ampliación se limita al entorno local Brave/Chromium y a tamaños de viewport emulados. La emulación de un móvil o un iPad no demuestra compatibilidad nativa con Safari/WebKit, sus selectores, teclado, cámara ni suspensión del sistema. Esas comprobaciones sobre dispositivos físicos continúan pendientes. Las comprobaciones locales y sus fixtures no constituyen clases, resultados ni logros reales de las alumnas, y no deben publicarse como tales.
+
+
+## Navegación de alumnas y etiquetas de Inicio · v16 · 13 de noviembre de 2026
+
+La ejecución local final de v16 completó **147 de 147 pruebas automatizadas**, TypeScript sin errores y comprobación de diferencias sin incidencias. La QA visual de los recorridos siguientes ha terminado. Esta ejecución es independiente de la revisión anterior, aunque coincida el recuento de pruebas. La publicación sigue en curso: no se afirma todavía que v16 esté desplegada.
+
+- Las alumnas tienen Inicio, Mi camino, Practicar, Mis clases y Calendario. Se retira su acceso separado a Biblioteca. Dentro de Practicar, los accesos superiores **Ejercicios** y **Recursos y materiales** reúnen ambos tipos de trabajo.
+- El panel docente conserva Biblioteca para gestionar recursos; mantiene también Hoy y esta semana, Alumnas, Banco de actividades y Calendario. No se añade Practicar al menú docente.
+- En Inicio, el ejercicio opcional del banco utiliza **Ejercicio para empezar**, la acción **Empezar ejercicio** y la nota **Ejercicio opcional disponible.** La actividad elegida por el docente y la continuación de trabajos guardados conservan su significado. El cambio de texto no crea una asignación ni un resultado de aprendizaje.
+- La reorganización de recursos conserva favoritos, borradores, archivos y consulta de historiales. Se mantienen el editor común de las actividades externas enlazadas, el contexto de las asignaciones y la recuperación explícita de copias anteriores. No se migran destructivamente ni se borran entregas o borradores de la antigua Biblioteca de alumnas.
+
+Recorridos locales comprobados:
+
+- Inicio y menús de Rocío y Alejandra con los textos exactos **Ejercicio para empezar**, **Empezar ejercicio** y **Ejercicio opcional disponible.** El panel docente mantiene Biblioteca y no muestra Practicar.
+- Practicar conserva filtros independientes entre Ejercicios y Recursos y materiales, favoritos y el borrador de un recurso sin actividad externa asociada. El recurso enlazado abre el editor de su actividad externa y conserva la respuesta guardada.
+- En Recursos y materiales, entregar desde Borradores un recurso sin actividad externa asociada y cerrar mantiene el modo y los filtros, devuelve el foco a la tarjeta y la identifica como **Recurso consultado**.
+- Distribución revisada a 390×844 en oscuro, 768×1024 en claro, 1440×900 y PC de 1536 px de ancho, sin desbordamiento horizontal del documento. Los botones del selector de contenido alcanzan 60 px en el móvil revisado.
+
+Al finalizar se detuvo el servidor local y se restauró la copia exacta inicial: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero registros de QA, respuestas, borradores, archivos, sesiones o exámenes locales. La publicación y su comprobación posterior siguen en curso.
+
+La validación visual se realizó en Brave/Chromium con viewport emulado. No constituye una prueba nativa de Safari, teclado, cámara ni suspensión de iOS/Android; esos límites se mantienen.

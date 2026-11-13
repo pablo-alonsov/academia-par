@@ -6,7 +6,7 @@ const matches=(row:any,target:Target)=>row?.studentId===target.studentId&&(targe
 /** Old resource drafts remain intact and require an explicit choice to reuse. */
 export function legacyDraftCopies(targets:Target[],serverDrafts:any[],localDrafts:any[]):DraftCopy[]{
   const copies:DraftCopy[]=[];
-  for(const row of serverDrafts){const target=targets.find(target=>matches(row,target));if(target&&hasDraftContent(normalizeDraft(row)))copies.push({...draftCopy(row),label:target.label||(target.activityId?'Borrador de otra actividad del recurso':'Borrador anterior de Biblioteca')});}
+  for(const row of serverDrafts){const target=targets.find(target=>matches(row,target));if(target&&hasDraftContent(normalizeDraft(row)))copies.push({...draftCopy(row),label:target.label||(target.activityId?'Borrador de otra actividad del recurso':'Borrador anterior del recurso')});}
   for(const row of localDrafts){
     const target=targets.find(target=>matches(row,target));if(!target)continue;
     if(row.pending===true&&hasDraftContent(normalizeDraft(row.value)))copies.push({...draftCopy(row,true),label:target.label?`${target.label} · Este dispositivo`:'Borrador anterior de este dispositivo'});

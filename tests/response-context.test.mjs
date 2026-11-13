@@ -15,6 +15,6 @@ test('another adaptation retains its original activity title in the common timel
  assert.equal(responseContextLabel({activityId:'other',assignmentId:'earlier'},'current','assigned',[{id:'other',title:'Otra consigna'}]),'Actividad: Otra consigna');
 });
 test('legacy resource submissions retain their library origin and their earlier-practice context',()=>{
- assert.equal(responseContextLabel({resourceId:'resource'},'activity','assigned'),'Práctica anterior del recurso desde Biblioteca');
- assert.equal(responseContextLabel({resourceId:'resource'},'activity'),'Entrega del recurso desde Biblioteca');
+ assert.equal(responseContextLabel({resourceId:'resource'},'activity','assigned'),'Práctica anterior del recurso');
+ assert.equal(responseContextLabel({resourceId:'resource'},'activity'),'Entrega anterior del recurso');
 });
