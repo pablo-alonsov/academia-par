@@ -128,3 +128,11 @@ Limpieza final: servidor local detenido y copia exacta inicial restaurada. Verif
 - Selector revisado a 390×844, 768×1024 y 1440×900: nombre correcto y sin desbordamiento. Comprobados también barra lateral y pie desde el perfil de Rocío.
 - Se conservan el enlace publicado, los identificadores de datos, la cookie, las claves locales y las cabeceras internas para mantener accesos, preferencias y borradores existentes. Esos identificadores técnicos no forman parte de la marca que muestra la interfaz.
 - TypeScript y las 104 pruebas existentes correctos. Esta revisión no introduce datos de demostración, asignaciones, clases ni resultados en producción; las comprobaciones del estado actual son de lectura.
+
+## Acceso a personalización desde el perfil · 13 de noviembre de 2026
+
+- Retirada la etiqueta «Acceso por perfil» de la cabecera de las alumnas; el panel docente conserva su indicación «Panel protegido».
+- Nueva opción «Personalizar presentación» en el menú del avatar de ambas alumnas. Abre el panel de Inicio, lo desplaza a la vista y enfoca su resumen. Se conserva el acceso que ya existía en Inicio.
+- Comprobado desde Inicio, Calendario y un ejercicio en Practicar, también desde un borrador abierto dentro de Inicio. Una respuesta local pendiente se guarda antes de navegar y se recupera con su contenido intacto; no se entrega ni se crea una valoración.
+- Móvil 390×844, tableta 768×1024 y PC 1440×900: opción accesible, panel abierto, foco correcto y sin desbordamiento. Apertura mediante ArrowDown y Enter comprobada. Las solicitudes se consumen una vez y se cancelan si cambia la navegación o el perfil.
+- TypeScript correcto. El único borrador usado para esta comprobación pertenece a la base local; se restaura su copia previa antes de publicar.

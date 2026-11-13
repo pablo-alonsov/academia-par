@@ -14,7 +14,20 @@ export function StudentAvatar({ student, small = false }: any) {
 }
 
 type PendingPhoto = { file: File; url: string; uploadId: string };
-export function PersonalizationPanel({ student, act, notify }: any) {
+export function PersonalizationPanel({ student, act, notify, openRequested = false, onOpened }: any) {
+  const panel = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!openRequested) return;
+    const frame = requestAnimationFrame(() => {
+      const details = panel.current; if (!details) return;
+      details.open = true;
+      const summary = details.querySelector('summary');
+      summary?.focus({ preventScroll: true });
+      details.scrollIntoView({ block: 'start', behavior: 'auto' });
+      onOpened?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openRequested, onOpened]);
   const [busy, setBusy] = useState(false), [preparing, setPreparing] = useState(false), [error, setError] = useState(""), [showAllIcons, setShowAllIcons] = useState(false), [photo, setPhoto] = useState<PendingPhoto | null>(null), [busyMessage, setBusyMessage] = useState("");
   const preview = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null), choosePhoto = useRef<HTMLButtonElement>(null), photoUrl = useRef(""), sequence = useRef(0), mounted = useRef(true), saving = useRef(false);
   const working = busy || preparing;
@@ -53,7 +66,7 @@ export function PersonalizationPanel({ student, act, notify }: any) {
     const body = new FormData(); body.set("file", photo.file); body.set("studentId", student.id); body.set("uploadId", photo.uploadId);
     return runSave("uploadProfilePhoto", body, "Foto de perfil guardada.", () => clearPhoto());
   };
-  return <details className="st-personalization"><summary><Palette size={17}/>Personalizar presentación</summary><div className="card st-personalization-content">
+  return <details ref={panel} className="st-personalization"><summary><Palette size={17}/>Personalizar presentación</summary><div className="card st-personalization-content">
     <div className="row st-current-profile"><StudentAvatar student={student} small/><div><strong>{student.name}</strong><span className="muted">Presentación actual del perfil</span></div></div>
     <fieldset disabled={working}><legend>Color <span className="muted">· {studentColors[colorId].label}</span></legend><div className="st-colors">{Object.entries(studentColors).map(([id, value]) => <button type="button" key={id} aria-pressed={colorId === id} aria-label={value.label} title={value.label} style={{ background: value.color }} onClick={() => save({ color: id })}>{colorId === id && <Check size={20} aria-hidden="true"/>}<span className="sr-only">{value.label}</span></button>)}</div></fieldset>
     <fieldset disabled={working}><legend>Iniciales e iconos</legend><div className="st-avatars" id="profile-avatar-options">{visibleIcons.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-pressed={avatarId === id} onClick={() => save({ avatar: id })}><Icon size={19} aria-hidden="true"/><span>{label}</span>{avatarId === id && <Check size={15} className="st-avatar-selected" aria-hidden="true"/>}</button>)}</div>{avatarOptions.length > 8 && <button type="button" className="btn quiet st-more-icons" aria-expanded={showAllIcons} aria-controls="profile-avatar-options" onClick={() => setShowAllIcons(value => !value)}>{showAllIcons ? "Mostrar menos iconos" : `Mostrar todos los iconos (${avatarOptions.length})`}<ChevronDown size={16} aria-hidden="true"/></button>}</fieldset>

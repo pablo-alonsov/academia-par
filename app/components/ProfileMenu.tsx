@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleHelp, LogOut } from 'lucide-react';
+import { ChevronDown, CircleHelp, LogOut, Palette } from 'lucide-react';
 
-type Props = { name: string; level: string; avatar: ReactNode; onSwitch: () => Promise<void>; onHelp: () => void; onOpen: () => void };
-export default function ProfileMenu({name,level,avatar,onSwitch,onHelp,onOpen}: Props) {
+type Props = { name: string; level: string; avatar: ReactNode; onSwitch: () => Promise<void>; onHelp: () => void; onOpen: () => void; onPersonalize?: () => void | Promise<void> };
+export default function ProfileMenu({name,level,avatar,onSwitch,onHelp,onOpen,onPersonalize}: Props) {
  const [open,setOpen]=useState(false),[switching,setSwitching]=useState(false);
  const wrapper=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null);
  const close=(restore=false)=>{setOpen(false);if(restore)trigger.current?.focus({preventScroll:true})};
@@ -26,6 +26,7 @@ export default function ProfileMenu({name,level,avatar,onSwitch,onHelp,onOpen}: 
    const index=event.key==='Home'?0:event.key==='End'?items.length-1:event.key==='ArrowDown'?(current+1)%items.length:(current-1+items.length)%items.length;items[index]?.focus({preventScroll:true});
   }}>
    <div className="profile-menu-heading" role="presentation"><strong>{name}</strong><small>{level}</small></div>
+   {onPersonalize&&<button role="menuitem" onClick={()=>{close(true);void onPersonalize()}}><Palette size={17}/>Personalizar presentación</button>}
    <button role="menuitem" disabled={switching} onClick={async()=>{setSwitching(true);try{await onSwitch();setOpen(false)}finally{setSwitching(false)}}}><LogOut size={17}/>{switching?'Cambiando de perfil…':'Cambiar de perfil'}</button>
    <button role="menuitem" onClick={()=>{close(true);onHelp()}}><CircleHelp size={17}/>Ver ayuda del menú</button>
   </div>}
