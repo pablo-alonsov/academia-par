@@ -202,3 +202,29 @@ Recorridos comprobados exclusivamente en el entorno local de `127.0.0.1:5183`:
 Al terminar se detuvo el servidor local y se restauró la copia exacta inicial de D1: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero asignaciones, respuestas, exámenes, archivos, sesiones o borradores locales. Los fixtures no representan trabajos ni aprendizaje reales de las alumnas. La publicación y su comprobación posterior siguen en curso.
 
 La QA visual se realizó mediante Brave/Chromium con viewport emulado. No acredita validación nativa de Safari, teclado, cámara ni suspensión de iOS/Android.
+
+
+## Fichas PDF y espacio de la flecha en selectores · v18 · 13 de noviembre de 2026
+
+La ejecución local de v18 completó **160 de 160 pruebas automatizadas**, TypeScript sin errores y comprobación de diferencias sin incidencias. La integración ampliada de archivos con R2 y los recorridos visuales siguientes han pasado. La importación de los dos originales en producción y la publicación siguen pendientes: no se afirma que v18 esté desplegada ni que las fichas estén ya importadas en producción. Las 156 pruebas y los recorridos anteriores se conservan como historial de v17.
+
+- Ajuste global del espacio interior de los selectores para separar su flecha del borde derecho y del texto. Se comprobó un espacio final de 44 px y separación de 16 px para la flecha en los selectores nativos revisados de las alumnas y del formulario docente.
+- Incorporación prevista de los originales completos `Alejandra_Ficha_12_Noviembre.pdf` y `Rocio_Ficha_12_Noviembre.pdf`: dos recursos propios y dos actividades reutilizables de tipo En papel enlazadas, cada uno con el perfil correspondiente. La inspección previa de las cuatro páginas no encontró solucionarios, notas docentes, calificaciones, adjuntos ni anotaciones privadas. No es necesario recortar o editar los PDFs.
+- Consulta desde Practicar → Recursos y materiales, con el filtro Fichas PDF: abrir el PDF en una pestaña nueva y disponer de descarga, usando las rutas autenticadas de materiales. No se publica el archivo por la ruta pública de avatares ni se presupone que todo navegador tenga el mismo visor nativo. El enlace de apertura, tanto de alumna como docente, solicita `#view=FitH`; su ajuste inicial al ancho se comprobó visualmente en el visor integrado de Brave/Chromium a 768 px.
+- Resolución mediante las respuestas y entregas existentes: identificar ejercicio y apartado, escribir respuesta/procedimiento o adjuntar foto o PDF del trabajo para revisión docente. No se incorpora un editor de PDF, no se transforman los originales en formularios rellenables y no se autocorrigen sus ejercicios al importar la ficha.
+- Biblioteca docente: Crear ejercicio abre el formulario existente con los datos de la ficha; Asignar ficha utiliza el diálogo de asignación existente. La importación por sí sola no crea encargos, sesiones, respuestas ni resultados. El límite de subida permanece en 8 MB.
+
+La integración ampliada de R2 comprobó el tipo MIME PDF y la conservación de los bytes de ambos originales. La descarga mantiene `attachment` por defecto y la visualización `inline` requiere petición explícita. La alumna propietaria y el docente obtuvieron acceso 200; el otro perfil recibió 403 y el acceso sin sesión, 401. Los archivos privados o retirados conservaron su protección.
+
+Recorridos locales comprobados:
+
+- Ambos PDFs originales se abrieron en el visor integrado de Brave y mostraron sus dos páginas, sin editar ni volver a generar los documentos.
+- La aplicación se revisó con ambos perfiles a 390 px en oscuro, 768 px y 1440 px: sin desbordamiento horizontal del documento y con botones de materiales de al menos 44 px.
+- Rocío guardó un borrador, lo reabrió y entregó una respuesta del fixture: quedó una entrega pendiente de revisión con el PDF conservado. No se generó autocorrección ni comprobación de dominio.
+- En Biblioteca se creó un recurso PDF de prueba reutilizando el archivo. Crear ejercicio abrió el formulario sin escribir automáticamente; guardar una actividad En papel y Asignar ficha → Para casa hizo aparecer el encargo primero en las tareas pendientes de Rocío. Al abrirlo se conservaron su asignación actual y el acceso al PDF.
+
+Estos recorridos y entregas son fixtures locales; no representan trabajos ni aprendizaje reales de las alumnas. La fecha del título de una ficha no crea una sesión ni atribuye contenido impartido o aprendido. La inspección y las pruebas usaron los originales completos, sin autoría ni modificación de PDF. El ajuste al ancho corresponde al enlace de apertura de la aplicación y a la vista del navegador; no modifica el PDF.
+
+Al terminar se retiraron las referencias locales de prueba y los dos PDFs de R2 utilizados por los fixtures, se detuvo el servidor y se restauró la copia local inicial exacta: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero archivos, respuestas, asignaciones, sesiones, exámenes y borradores. Esta limpieza no equivale a importar los documentos en producción.
+
+La QA visual se realizó en Brave/Chromium con viewport emulado y su visor PDF integrado. No equivale a validar Safari nativo, su visor PDF, teclado, cámara ni suspensión del sistema móvil.

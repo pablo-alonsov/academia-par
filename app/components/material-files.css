@@ -1,0 +1,12 @@
+.material-files{display:flex;flex-direction:column;gap:14px;margin:16px 0 22px;min-width:0}
+.material-pdf{padding:20px;border:1px solid var(--control-line,var(--line));border-radius:14px;background:var(--surface2);min-width:0}
+.material-pdf-heading{display:flex;align-items:flex-start;gap:12px;min-width:0;margin-bottom:17px}
+.material-pdf-heading>svg{flex-shrink:0;color:var(--primary);margin-top:2px}
+.material-pdf-heading>div{min-width:0}
+.material-pdf-heading strong{display:block;font-size:16px;line-height:1.5;color:var(--text)}
+.material-pdf-heading p{margin:4px 0 0!important;font-size:12px!important;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.material-pdf-actions{display:flex;flex-wrap:wrap;gap:10px}
+.material-pdf-actions .btn,.material-file-link{min-height:44px;white-space:normal;max-width:100%}
+.material-pdf .material-pdf-help{margin:14px 0 0;font-size:13px;line-height:1.7;color:var(--muted)}
+.material-pdf :is(a,button):focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+@media(max-width:600px){.material-pdf{padding:16px}.material-pdf-actions{flex-direction:column;align-items:stretch}.material-pdf-actions .btn{width:100%;justify-content:center}.material-pdf-heading p{font-size:13px!important}}

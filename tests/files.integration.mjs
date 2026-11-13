@@ -1,6 +1,6 @@
 // Local-only checks of actual R2 upload/download access. Cleans uploaded files.
 import assert from 'node:assert/strict';
-import {png,docx,heif} from './upload-fixtures.mjs';
+import {png,docx,heif,pdf} from './upload-fixtures.mjs';
 const base=process.env.ARP_TEST_URL || 'http://127.0.0.1:5173';
 if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw new Error('Only loopback testing is permitted.');
 if(!process.env.ARP_TEST_PIN)throw new Error('Supply ARP_TEST_PIN in the local environment.');
@@ -39,7 +39,14 @@ try {
   assert.match(image.headers.get('Content-Disposition'),/filename="[^\"]+"; filename\*=UTF-8''/);assert.deepEqual(Buffer.from(await image.arrayBuffer()),png);
   for(const [bytes,name,type,expected]of [[docx,'QA-documento.docx','application/octet-stream','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],[heif(),'QA-original.heic','image/heic','image/heic']]){const file=await upload('rocio',{bytes,name,type});const r=await request('rocio',file.url);assert.equal(r.headers.get('Content-Type'),expected);assert.match(r.headers.get('Content-Disposition'),/^attachment;/);assert.equal((await request('alejandra',file.url)).status,403);}
   const disguised=new FormData();disguised.set('file',new File(['<svg><script>bad</script></svg>'],'QA-photo.png',{type:'image/png'}));disguised.set('studentId','rocio');assert.equal((await request('rocio','/api/files',{method:'POST',body:disguised})).status,400);
+  const worksheet=await upload('rocio',{bytes:pdf,name:'QA-ficha.pdf',type:'application/octet-stream'});assert.equal(worksheet.type,'application/pdf');assert.match((await request('rocio',worksheet.url)).headers.get('Content-Disposition'),/^attachment;/);
+  const view=await request('rocio',worksheet.url+'?view=inline');assert.equal(view.status,200);assert.match(view.headers.get('Content-Disposition'),/^inline;/);assert.equal(view.headers.get('Content-Type'),'application/pdf');assert.equal(view.headers.get('Cache-Control'),'private, no-store');assert.equal(view.headers.get('X-Content-Type-Options'),'nosniff');assert.deepEqual(Buffer.from(await view.arrayBuffer()),pdf);
+  assert.equal((await request('anonymous',worksheet.url+'?view=inline')).status,401);assert.equal((await request('alejandra',worksheet.url+'?view=inline')).status,403);assert.equal((await request('teacher',worksheet.url+'?view=inline')).status,200);
+  const privatePdf=await upload('teacher',{bytes:pdf,name:'QA-privada.pdf',type:'application/pdf'});assert.equal((await request('rocio',privatePdf.url+'?view=inline')).status,403);assert.equal((await request('teacher',privatePdf.url+'?view=inline')).status,200);
+  let managed=await request('teacher','/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'manageFile',data:{id:worksheet.id,detached:true}})});assert.equal(managed.status,200);assert.equal((await request('rocio',worksheet.url+'?view=inline')).status,403);assert.equal((await request('teacher',worksheet.url+'?view=inline')).status,200);
+  managed=await request('teacher','/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'manageFile',data:{id:worksheet.id,detached:false}})});assert.equal(managed.status,200);assert.equal((await request('rocio',worksheet.url+'?view=inline')).status,200);
   console.log('PASS R2 MIME normalization, DOCX/HEIC downloads, idempotent uploads, persistence and private/cross-profile file permissions');
+  console.log('PASS native PDF inline opt-in, original bytes, attachment default, teacher/own/foreign/anonymous/private/detached access');
 } finally {
   for(const id of ids) assert.equal((await request('teacher','/api/files/'+id,{method:'DELETE'})).status,200);
   for(const p of ['teacher','rocio','alejandra'])await request(p,'/api/auth',{method:'DELETE'});

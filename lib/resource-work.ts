@@ -20,7 +20,7 @@ export function responsesForActivity(activity:Item,studentId:string,responses:It
   return distinct(responses.filter(row=>row.studentId===studentId&&(row.activityId===activity.id||related.has(row))));
 }
 export function linkedResourceActivity(resourceId:string,studentId:string,activities:Item[],assignments:Item[]=[],preferredActivityId?:string):Item|undefined{
-  const linked=activities.filter(item=>item.type==="external"&&item.resourceId===resourceId&&available(item,studentId)).sort(idOrder);
+  const linked=activities.filter(item=>["external","paper"].includes(item.type)&&item.resourceId===resourceId&&available(item,studentId)).sort(idOrder);
   const preferred=linked.find(item=>item.id===preferredActivityId);if(preferred)return preferred;
   const assigned=new Set(assignments.filter(item=>item.studentId===studentId&&["Para hacer en clase","Para casa"].includes(item.category)).map(item=>item.activityId));
   return linked.find(item=>assigned.has(item.id))||linked.find(item=>item.id===`act-${resourceId}`)||linked[0];

@@ -18,3 +18,9 @@ test('the chosen resource activity uses explicit own context, assigned work, the
  assert.equal(linkedResourceActivity('r1','rocio',activities,[{studentId:'rocio',activityId:'adapted',category:'Para casa'}])?.id,'adapted');assert.equal(linkedResourceActivity('r1','rocio',activities,[{studentId:'alejandra',activityId:'adapted',category:'Para casa'},{studentId:'rocio',activityId:'adapted',category:'Opcionales'}],'foreign')?.id,'act-r1');
  assert.equal(linkedResourceActivity('missing','rocio',activities),undefined);assert.equal(linkedResourceActivity('r1','rocio',[activities[1],{...activities[1],id:'zzz'}])?.id,'adapted');assert.equal(linkedResourceActivity('r1','rocio',[activities[4]]),undefined);
 });
+
+test('a paper worksheet resolves the same exact resource with its own preferred assignment context',()=>{
+ const paper={id:'paper-r1',type:'paper',resourceId:'r1',studentId:'rocio'},otherPaper={id:'foreign-paper',type:'paper',resourceId:'r1',studentId:'alejandra'};
+ assert.equal(linkedResourceActivity('r1','rocio',[...activities,paper,otherPaper],[],'paper-r1'),paper);assert.equal(linkedResourceActivity('r1','rocio',[...activities,paper],[{studentId:'rocio',activityId:paper.id,category:'Para casa'}]),paper);assert.equal(linkedResourceActivity('r1','rocio',[otherPaper]),undefined);
+ const response={id:'worksheet-attempt',studentId:'rocio',activityId:paper.id,assignmentId:'specific-paper-assignment',answer:'Procedimiento en papel',hintsUsed:[1]};assert.deepEqual(responsesForResource('r1','rocio',[response],[paper]),[response]);assert.equal(response.assignmentId,'specific-paper-assignment');
+});

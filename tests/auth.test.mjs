@@ -5,7 +5,7 @@ import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import ts from 'typescript';
-import {png,docx,heif} from './upload-fixtures.mjs';
+import {png,docx,heif,pdf} from './upload-fixtures.mjs';
 import {PROFILE_COLORS,PROFILE_AVATARS} from '../lib/profile-customization.ts';
 
 // Invoke the actual route handlers with production-like HTTPS Requests. The only
@@ -570,4 +570,15 @@ test('new activity submissions share the verified resource while legacy response
  const replay=await mutate(rocio.cookie,'submitResponse',{assignmentId:'original-context',submissionId:'legacy-activity-use'});assert.equal(replay.alreadySubmitted,true);assert.equal(replay.patch.responses[0].resourceId,undefined);assert.equal(sqlite.prepare("SELECT data FROM responses WHERE id='response:rocio:legacy-activity-use'").get().data,oldActivity);assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM responses WHERE id=?').get(legacy.id),legacyRow);
  const adapted=await mutate(teacher.cookie,'duplicateActivity',{id:'act-joined-resource',title:'Consigna adaptada',hints:['Pista distinta']});await mutate(teacher.cookie,'assignActivity',{id:'adapted-context',studentId:'rocio',activityId:adapted.id,category:'Para hacer en clase'});const attempt=await mutate(rocio.cookie,'submitResponse',{assignmentId:'adapted-context',answer:'Otro procedimiento',selfAssessment:'Con alguna duda',hintsUsed:[0],submissionId:'adapted-activity-use'});assert.equal(attempt.patch.responses[0].activityId,adapted.id);assert.equal(attempt.patch.responses[0].assignmentId,'adapted-context');assert.equal(attempt.patch.responses[0].resourceId,'joined-resource');assert.notEqual(attempt.id,submitted.id);
  await mutate(rocio.cookie,'useResource',{resourceId:'joined-resource',answer:'Cliente anterior sigue funcionando',submissionId:'still-old-resource'});assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,5);assert.equal(sqlite.prepare('SELECT data FROM drafts WHERE id=?').get(resourceDraft.id).data,oldDraft);
+});
+
+test('native PDF viewing is explicit and keeps identical authorization, privacy and download defaults',async()=>{
+ const rocio=await login('rocio'),alejandra=await login('alejandra'),teacher=await login('teacher',pin);memoryBucket();const uploaded=await upload(rocio.cookie,{bytes:pdf,name:'Ficha con páginas.pdf',type:'application/octet-stream'});assert.equal(uploaded.status,200);const file=await uploaded.json();assert.equal(file.type,'application/pdf');const context={params:Promise.resolve({id:file.id})};
+ const get=(cookie,query='')=>fileRoute.GET(request(file.url+query,{cookie}),context);
+ const defaultDownload=await get(rocio.cookie);assert.equal(defaultDownload.status,200);assert.match(defaultDownload.headers.get('Content-Disposition'),/^attachment;/);assert.match((await get(rocio.cookie,'?download=1')).headers.get('Content-Disposition'),/^attachment;/);
+ const view=await get(rocio.cookie,'?view=inline');assert.equal(view.status,200);assert.equal(view.headers.get('Content-Type'),'application/pdf');assert.match(view.headers.get('Content-Disposition'),/^inline;/);assert.equal(view.headers.get('Cache-Control'),'private, no-store');assert.equal(view.headers.get('X-Content-Type-Options'),'nosniff');assert.equal(view.headers.get('Content-Security-Policy'),"default-src 'none'; sandbox");assert.deepEqual(Buffer.from(await view.arrayBuffer()),pdf);
+ assert.equal((await get(undefined,'?view=inline')).status,401);assert.equal((await get(alejandra.cookie,'?view=inline')).status,403);assert.equal((await get(teacher.cookie,'?view=inline')).status,200);
+ await mutate(teacher.cookie,'manageFile',{id:file.id,shared:false});assert.equal((await get(rocio.cookie,'?view=inline')).status,403);assert.equal((await get(teacher.cookie,'?view=inline')).status,200);await mutate(teacher.cookie,'manageFile',{id:file.id,shared:true,detached:true});assert.equal((await get(rocio.cookie,'?view=inline')).status,403);assert.equal((await get(teacher.cookie,'?view=inline')).status,200);
+ const textFile=await (await upload(rocio.cookie,{bytes:Buffer.from('Notas UTF-8'),name:'notas.txt',type:'text/plain'})).json();assert.match((await fileRoute.GET(request(textFile.url+'?view=inline',{cookie:rocio.cookie}),{params:Promise.resolve({id:textFile.id})})).headers.get('Content-Disposition'),/^attachment;/);
+ const snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.equal(snapshot.responses.length,0);assert.equal(snapshot.assignments.length,0);assert.equal(snapshot.observations.length,0);assert.equal(snapshot.sessions.length,0);
 });
