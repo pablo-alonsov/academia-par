@@ -347,7 +347,7 @@ test('preferences are bounded, owned and exposed only through the public profile
   await mutate(rocio.cookie,'updatePreferences',{studentId:'alejandra',color:'rose'},403);await mutate(rocio.cookie,'updatePreferences',{color:'arbitrary-css'},400);await mutate(rocio.cookie,'updatePreferences',{favoriteResourceIds:[other.id]},403);
   await mutate(teacher.cookie,'updateStudent',{id:'rocio',pinnedResourceIds:[resource.id]});const snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.equal(snapshot.resources.find(r=>r.id===resource.id).pinned,true);
   const alejandra=await login('alejandra');await mutate(alejandra.cookie,'updatePreferences',{color:'teal',avatar:'book'});
-  const publicResponse=await profiles.GET(),publicData=await publicResponse.json();assert.equal(publicResponse.status,200);assert.deepEqual(publicData.map(p=>p.id),['rocio','alejandra']);assert.ok(publicData.every(p=>Object.keys(p).sort().join(',')==='avatar,color,id,level,name'));assert.equal(publicData.find(p=>p.id==='rocio').avatar,'planet');
+  const publicResponse=await profiles.GET(),publicData=await publicResponse.json();assert.equal(publicResponse.status,200);assert.deepEqual(publicData.map(p=>p.id),['alejandra','rocio']);assert.ok(publicData.every(p=>Object.keys(p).sort().join(',')==='avatar,color,id,level,name'));assert.equal(publicData.find(p=>p.id==='rocio').avatar,'planet');
   const teacherSnapshot=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.deepEqual(teacherSnapshot.students.map(p=>p.id),['rocio','alejandra']);
 });
 test('skill ownership cannot move and adapting starts a separate unassessed skill',async()=>{
