@@ -121,3 +121,10 @@ Limpieza final: servidor local detenido y copia exacta inicial restaurada. Verif
 - Ruta pública limitada a la foto activa de Rocío o Alejandra, con versión exacta, propósito avatar, propietario, tamaño y tipo verificados. Los archivos de clase no se pueden publicar por esa ruta y las fotos no se pueden adjuntar como evidencias o recursos. Retirar la foto o elegir icono deja su URL pública sin acceso; el objeto anterior se conserva fuera de los materiales académicos.
 - 104 pruebas automáticas y TypeScript correctos. Integración HTTP/R2 local de foto, persistencia, versiones, reintentos, permisos y retirada correcta. Los fixtures locales de integración restauran el perfil original y limpian sus propios archivos y tokens; los datos publicados se comprueban solo mediante lecturas.
 - Limpieza final de esta revisión: retirado únicamente el objeto R2 de la foto sintética de interfaz y restaurada la copia exacta inicial de D1. Cero archivos, sesiones, entregas o comprobaciones de QA; se conservan las 2 alumnas, 30 habilidades, 119 actividades y 21 recursos locales.
+
+## Marca Academia PAR · 13 de noviembre de 2026
+
+- Nombre actualizado en selector, título principal, barra lateral, pie de página, título del navegador, metadatos de Sites y documentación. El monograma «a» sigue representando «academia».
+- Selector revisado a 390×844, 768×1024 y 1440×900: nombre correcto y sin desbordamiento. Comprobados también barra lateral y pie desde el perfil de Rocío.
+- Se conservan el enlace publicado, los identificadores de datos, la cookie, las claves locales y las cabeceras internas para mantener accesos, preferencias y borradores existentes. Esos identificadores técnicos no forman parte de la marca que muestra la interfaz.
+- TypeScript y las 104 pruebas existentes correctos. Esta revisión no introduce datos de demostración, asignaciones, clases ni resultados en producción; las comprobaciones del estado actual son de lectura.

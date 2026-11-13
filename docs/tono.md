@@ -1,6 +1,6 @@
 # Tono de la interfaz
 
-La interfaz de Academia ARP usa un tono sobrio, directo y adecuado tanto para Primaria como para ESO.
+La interfaz de Academia PAR usa un tono sobrio, directo y adecuado tanto para Primaria como para ESO.
 
 - Usar títulos funcionales: «Calendario», «Actividades opcionales», «Historial de clases».
 - Evitar eslóganes, frases motivacionales, elogios genéricos y metáforas de crecimiento o descubrimiento.

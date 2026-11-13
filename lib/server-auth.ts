@@ -13,7 +13,7 @@ export function json(value: unknown, status = 200, extra?: HeadersInit) {
 }
 export function fail(error: unknown) {
   if (error instanceof HttpError) return json({error: error.message,...(error.code?{code:error.code}:{})}, error.status,error.code==="PROFILE_CHANGED"?{"X-ARP-Profile-Changed":"true"}:undefined);
-  console.error("ARP server operation failed", error instanceof Error ? error.message : "unknown");
+  console.error("PAR server operation failed", error instanceof Error ? error.message : "unknown");
   return json({error:"No se pudo guardar. Tus cambios no se han confirmado; vuelve a intentarlo."}, 500);
 }
 export function sameOrigin(request: Request) {

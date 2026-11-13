@@ -1,4 +1,4 @@
-# Academia ARP
+# Academia PAR
 
 Academia para las clases individuales de Rocío (6.º Primaria) y Alejandra (2.º ESO). React 19, TypeScript y rutas de servidor compatibles con Next.js mediante Vinext; Tailwind/CSS con temas accesibles. Cloudflare D1 conserva los registros y R2 los archivos. Sites aloja la aplicación con acceso directo por enlace.
 

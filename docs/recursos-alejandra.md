@@ -19,7 +19,7 @@ Se añadieron 18 ejercicios propios con identificadores `a-extra-*`: 12 autocorr
 
 Los PDF siguen alojados en rutas con la etiqueta LOMCE. El [índice oficial de Descartes para 2.º de ESO LOMLOE](https://proyectodescartes.org/EDAD/mat_2eso_cast-LOMLOE.htm) enlaza las mismas unidades consultadas; esto no demuestra una coincidencia exacta con el libro o la programación del colegio. El docente selecciona los apartados.
 
-Las fichas informativas oficiales de PhET son [Densidad](https://phet.colorado.edu/es/simulations/density) y [Construye un átomo](https://phet.colorado.edu/es/simulations/build-an-atom). En el módulo se enlaza su ejecución HTML5 directa para reducir pasos de acceso. Las comprobaciones se realizaron en una pestaña independiente, cerrada al terminar, sin modificar la pestaña de Academia ARP ni su viewport. No se verificó el uso en móvil o tableta ni se garantiza que el comportamiento futuro sea idéntico.
+Las fichas informativas oficiales de PhET son [Densidad](https://phet.colorado.edu/es/simulations/density) y [Construye un átomo](https://phet.colorado.edu/es/simulations/build-an-atom). En el módulo se enlaza su ejecución HTML5 directa para reducir pasos de acceso. Las comprobaciones se realizaron en una pestaña independiente, cerrada al terminar, sin modificar la pestaña de Academia PAR ni su viewport. No se verificó el uso en móvil o tableta ni se garantiza que el comportamiento futuro sea idéntico.
 
 ## Recursos revisados y no seleccionados
 
@@ -30,7 +30,7 @@ La concentración se trabaja con tres actividades internas completas: 6 g de sol
 
 ## Uso y registro
 
-Cada recurso tiene objetivo, duración orientativa, consigna, habilidad y una actividad externa `act-{id-del-recurso}`. La respuesta o imagen se guarda en Academia ARP; abrir el enlace o indicar que se ha utilizado no aporta aciertos externos ni modifica el dominio de una habilidad. Las explicaciones, procedimientos, sintaxis y producción en inglés requieren revisión docente.
+Cada recurso tiene objetivo, duración orientativa, consigna, habilidad y una actividad externa `act-{id-del-recurso}`. La respuesta o imagen se guarda en Academia PAR; abrir el enlace o indicar que se ha utilizado no aporta aciertos externos ni modifica el dominio de una habilidad. Las explicaciones, procedimientos, sintaxis y producción en inglés requieren revisión docente.
 
 Las respuestas numéricas solicitan una unidad concreta y separan la corrección del valor de la revisión del procedimiento. Las fracciones admiten equivalentes. Las soluciones y orientaciones pertenecen al campo docente privado `answer`. La semilla no incluye resultados ficticios.
 

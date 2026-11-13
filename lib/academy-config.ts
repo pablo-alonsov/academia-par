@@ -1,4 +1,4 @@
-/** Inicio acordado para el seguimiento de Academia ARP. */
+/** Inicio acordado para el seguimiento de Academia PAR. */
 export const ACADEMY_START_DATE = '2026-11-16';
 export function madridToday(now: Date = new Date()): string {
   return now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
