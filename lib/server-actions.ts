@@ -4,6 +4,7 @@ import { grade } from "./grading";
 import { ACADEMY_START_DATE, isTrackingDate } from "./academy-config";
 import { PROFILE_COLORS, PROFILE_AVATARS } from "./profile-customization";
 import { validAvatarFile } from "./server-avatar";
+import { ACTIVITY_SUPPORT_OPTIONS } from "./activity-support";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -18,6 +19,9 @@ function webLink(value:unknown) {
 }
 function title(data:RecordData) {if(!text(data.title,250).trim()) throw new HttpError(400,"Añade un título.");}
 function skillState(value:unknown) {if(!STATES.includes(String(value))) throw new HttpError(400,"Selecciona un estado de aprendizaje válido.");}
+function supportMode(data:RecordData){if(data.supportMode!==undefined&&!ACTIVITY_SUPPORT_OPTIONS.some(option=>option.value===data.supportMode))throw new HttpError(400,"Indica si esta propuesta se hace sola, con docente o está por confirmar.");}
+async function activityResourceId(activity:RecordData,studentId:string){if(!activity.resourceId)return undefined;const resource=await required("resources",activity.resourceId);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"El recurso asociado no está disponible en este perfil.");return resource.id as string;}
+async function validateActivityResource(activity:RecordData){if(!activity.resourceId)return;const resource=await required("resources",activity.resourceId);for(const studentId of ["rocio","alejandra"] as const)if(allowedContent(activity,studentId)&&!allowedContent(resource,studentId))throw new HttpError(400,"El recurso debe estar disponible para todas las alumnas de esta actividad.");}
 async function ensureFileAccess(profile:Profile,ids:unknown,studentId:string) {
   if(ids===undefined) return;
   if(!Array.isArray(ids) || ids.length>8) throw new HttpError(400,"No se pueden adjuntar tantos archivos.");
@@ -46,13 +50,14 @@ async function draftTarget(profile:Profile,data:RecordData){
 }
 async function resourceIds(value:unknown,studentId:string,max=30){if(!Array.isArray(value)||value.length>max||value.some(id=>typeof id!=="string"))throw new HttpError(400,"La selección de recursos no es válida.");const ids=[...new Set(value)] as string[];for(const id of ids){const resource=await required("resources",id);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"Un recurso pertenece a otra alumna.");trackChange("resources",id);}return ids;}
 function submissionIdentity(studentId:string,value:unknown){if(value===undefined)return {id:crypto.randomUUID(),submissionId:undefined};if(typeof value!=="string"||!/^[A-Za-z0-9_-]{8,128}$/.test(value))throw new HttpError(400,"El identificador de la entrega no es válido.");return {id:`response:${studentId}:${value}`,submissionId:value};}
-async function replayResponse(id:string,studentId:string,activityId:string|undefined,resourceId:string|undefined){const old=await get("responses",id);if(!old)return null;if(old.studentId!==studentId||old.activityId!==activityId||old.resourceId!==resourceId)throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");trackChange("responses",id);if(old.assignmentId)trackChange("assignments",old.assignmentId);return old;}
+function sameResponseContext(old:RecordData,studentId:string,activityId:string|undefined,resourceId:string|undefined){return old.studentId===studentId&&old.activityId===activityId&&(old.resourceId===resourceId||Boolean(activityId&&old.resourceId==null));}
+async function replayResponse(id:string,studentId:string,activityId:string|undefined,resourceId:string|undefined){const old=await get("responses",id);if(!old)return null;if(!sameResponseContext(old,studentId,activityId,resourceId))throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");trackChange("responses",id);if(old.assignmentId)trackChange("assignments",old.assignmentId);if(activityId||resourceId)trackChange("drafts",draftId(studentId,activityId?"activity":"resource",activityId||resourceId!));return old;}
 async function saveSubmission(item:RecordData,draft:string,assignment?:RecordData,draftRevision?:unknown){
   const nonce=crypto.randomUUID();item._submissionNonce=nonce;const statements=[recordStatement("responses",item,true)];
   if(assignment)statements.push(submissionStatement("assignments",assignment,item.id,nonce,true));
   if(draftRevision!==undefined){const expected=cleanString(draftRevision,150);trackChange("drafts",draft);statements.push(database().prepare("DELETE FROM drafts WHERE id=? AND json_extract(data,'$.clientRevision')=? AND EXISTS (SELECT 1 FROM responses WHERE id=? AND json_extract(data,'$._submissionNonce')=?)").bind(draft,expected,item.id,nonce));}
   await database().batch(statements);
-  const saved=await required("responses",item.id);if(saved.studentId!==item.studentId||saved.activityId!==item.activityId||saved.resourceId!==item.resourceId)throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");return saved;
+  const saved=await required("responses",item.id);if(!sameResponseContext(saved,item.studentId,item.activityId,item.resourceId))throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");return saved;
 }
 function newObservation(skill:RecordData,data:RecordData,sessionId?:string) {
   const id=sessionId?`check:${sessionId}:${skill.id}`:crypto.randomUUID();
@@ -159,12 +164,13 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const old=data.id?await get("activities",data.id):null;
     const item:RecordData={...old,...data,id:action==="duplicateActivity"?crypto.randomUUID():data.id || crypto.randomUUID()};
     delete item.hintsText;delete item.optionsText;
-    title(item);
+    title(item);supportMode(data);
     if(!TYPES.includes(item.type)) throw new HttpError(400,"Elige un tipo de actividad válido.");
     if(item.studentId) validateStudent(item.studentId);
     if(item.suggestedStudentIds && (!Array.isArray(item.suggestedStudentIds) || item.suggestedStudentIds.some((s:unknown)=>s!=="rocio"&&s!=="alejandra"))) throw new HttpError(400,"Alumnas no válidas.");
     if(item.hints && (!Array.isArray(item.hints)||item.hints.length>8||item.hints.some((h:unknown)=>typeof h!=="string"))) throw new HttpError(400,"Las pistas deben ser textos breves.");
     webLink(item.url);
+    await validateActivityResource(item);
     await put("activities",item);return {id:item.id};
   }
   if(action==="assignActivity") {
@@ -184,14 +190,15 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const studentId=ownStudent(profile,assignment?.studentId || (profile==="teacher"?data.studentId:profile));
     const activity=await required("activities",assignment?.activityId || data.activityId);
     if(!allowedContent(activity,studentId)) throw new HttpError(403,"Esta actividad no está disponible en tu perfil.");
-    const identity=submissionIdentity(studentId,data.submissionId),replay=await replayResponse(identity.id,studentId,activity.id,undefined);if(replay)return {id:replay.id,autoResult:replay.autoResult,reviewStatus:replay.reviewStatus,alreadySubmitted:true};
+    const resourceId=await activityResourceId(activity,studentId);if(data.resourceId!==undefined&&data.resourceId!==resourceId)throw new HttpError(400,"El recurso no corresponde a esta actividad.");
+    const identity=submissionIdentity(studentId,data.submissionId),replay=await replayResponse(identity.id,studentId,activity.id,resourceId);if(replay)return {id:replay.id,autoResult:replay.autoResult,reviewStatus:replay.reviewStatus,alreadySubmitted:true};
     const optional=assignment?undefined:{id:`optional:${studentId}:${activity.id}`,studentId,activityId:activity.id,category:"Opcionales"};if(!assignment)assignment=optional!;
     const answer=text(data.answer,30000);
     const steps=procedure(data.procedure);
     if(["choice","numeric","fraction","text"].includes(activity.type)?!answer.trim():!answer.trim()&&!data.fileIds?.length&&!procedureFilled(steps))throw new HttpError(400,"Escribe una respuesta, explica el procedimiento o adjunta tu trabajo.");
     const assessment=selfAssessment(data.selfAssessment,true),hints=hintsUsed(data.hintsUsed,activity.hints?.length || 0);
     await ensureFileAccess(profile,data.fileIds,studentId);
-    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,assignmentId:assignment.id,activityId:activity.id,answer,hintsUsed:hints,selfAssessment:assessment,procedure:steps,comment:text(data.comment,5000),autoResult:grade(activity,answer),reviewStatus:"pending",fileIds:data.fileIds || [],createdAt:new Date().toISOString()},draftId(studentId,"activity",activity.id),optional,data.draftRevision);
+    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,assignmentId:assignment.id,activityId:activity.id,...(resourceId?{resourceId}:{}),answer,hintsUsed:hints,selfAssessment:assessment,procedure:steps,comment:text(data.comment,5000),autoResult:grade(activity,answer),reviewStatus:"pending",fileIds:data.fileIds || [],createdAt:new Date().toISOString()},draftId(studentId,"activity",activity.id),optional,data.draftRevision);
     return {id:item.id,autoResult:item.autoResult,reviewStatus:item.reviewStatus};
   }
   if(action==="reviewResponse") {
@@ -249,7 +256,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   }
   if(action==="upsertResource") {
     const old=data.id?await get("resources",data.id):null;
-    const item:RecordData={...old,...data,id:data.id || crypto.randomUUID()};title(item);
+    const item:RecordData={...old,...data,id:data.id || crypto.randomUUID()};title(item);supportMode(data);
     if(item.studentId) validateStudent(item.studentId);
     webLink(item.url);
     if(item.fileId) {

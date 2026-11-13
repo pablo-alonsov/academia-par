@@ -27,6 +27,11 @@ export function reconcileSeedRecord(domain:SeedDomain,current:Data|null,planned:
       if(!has(current,key))result[key]=value;
       continue;
     }
+    if((domain==="activities"||domain==="resources")&&key==="supportMode"&&!has(current,key)&&!has(baseline||{},key)){
+      const contentKeys=["title","objective","instructions","materials","type","checkMethod","hints","resourceId"];
+      const customized=!baseline||contentKeys.some(field=>has(baseline,field)&&!sameSeedValue(current[field],baseline[field]));
+      if(customized){result.supportMode="unspecified";continue;}
+    }
     // Update a default only while it is still the previous planned value.
     // Missing custom fields stay missing; new curriculum fields fill true gaps.
     if(baseline && has(baseline,key)) {

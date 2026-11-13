@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {globSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
+import {responsesForResource,responsesForActivity} from '../lib/resource-work.ts';
 
 const base=process.env.ARP_TEST_URL || 'http://127.0.0.1:5173';
 if(!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Only loopback integration testing is permitted.');
@@ -78,6 +79,20 @@ try {
   assert.ok(!(await api('rocio','/api/data')).data.exams.some(x=>x.id==='qa-exam'));
   assert.equal((await api('rocio','/api/auth')).data.profile,'rocio');
   console.log('PASS equivalent fractional answer, separate review, persistence, pupil exam CRUD and denied cross-profile exam writes');
+
+  await action('upsertResource',{id:'qa-joined-resource',studentId:'rocio',title:'QA recurso con consigna',type:'Web',instructions:'QA observar y explicar',supportMode:'independent'});
+  await action('upsertActivity',{id:'qa-external-activity',studentId:'rocio',title:'QA consigna original',type:'external',resourceId:'qa-joined-resource',instructions:'QA explica lo observado',hints:['QA pista original'],supportMode:'independent'});
+  await action('assignActivity',{id:'qa-external-assignment',studentId:'rocio',activityId:'qa-external-activity',category:'Para casa'});
+  const legacy=await api('rocio','/api/action',{action:'useResource',data:{resourceId:'qa-joined-resource',answer:'QA respuesta antigua de biblioteca',submissionId:'qa-legacy-resource-use'}});assert.equal(legacy.status,200);await action('reviewResponse',{id:legacy.data.id,feedback:'QA feedback original que debe conservarse'});
+  let joined=(await api('teacher','/api/data')).data;const legacyRow=joined.responses.find(r=>r.id===legacy.data.id);assert.equal(legacyRow.activityId,undefined);
+  const legacyDraft=await api('rocio','/api/action',{action:'saveDraft',data:{resourceId:'qa-joined-resource',answer:'QA borrador antiguo del recurso',clientRevision:'qa-resource-revision'}});assert.equal(legacyDraft.status,200);const legacyDraftRow=legacyDraft.data.patch.drafts[0];
+  await api('rocio','/api/action',{action:'saveDraft',data:{activityId:'qa-external-activity',answer:'QA intento nuevo',selfAssessment:'Fácil',hintsUsed:[0],clientRevision:'qa-activity-revision'}});
+  const shared=await api('rocio','/api/action',{action:'submitResponse',data:{assignmentId:'qa-external-assignment',answer:'QA intento nuevo',selfAssessment:'Fácil',hintsUsed:[0],submissionId:'qa-joined-activity-use',draftRevision:'qa-activity-revision'}});assert.equal(shared.status,200);assert.equal(shared.data.patch.responses[0].resourceId,'qa-joined-resource');assert.equal(shared.data.patch.responses[0].assignmentId,'qa-external-assignment');
+  const adapted=await action('duplicateActivity',{id:'qa-external-activity',title:'QA otra consigna',hints:['QA otra pista 1','QA otra pista 2']});await action('assignActivity',{id:'qa-adapted-assignment',studentId:'rocio',activityId:adapted.id,category:'Para hacer en clase'});
+  const different=await api('rocio','/api/action',{action:'submitResponse',data:{assignmentId:'qa-adapted-assignment',answer:'QA procedimiento distinto',hintsUsed:[1],selfAssessment:'Con alguna duda',submissionId:'qa-adapted-activity-use'}});assert.equal(different.status,200);
+  joined=(await api('rocio','/api/data')).data;assert.deepEqual(joined.responses.find(r=>r.id===legacy.data.id),legacyRow);assert.deepEqual(joined.drafts.find(d=>d.id===legacyDraftRow.id),legacyDraftRow);assert.ok(!joined.drafts.some(d=>d.activityId==='qa-external-activity'));
+  const history=responsesForResource('qa-joined-resource','rocio',joined.responses,joined.activities),activityHistory=responsesForActivity(joined.activities.find(a=>a.id==='qa-external-activity'),'rocio',joined.responses,joined.activities);assert.equal(history.length,3);assert.deepEqual(new Set(activityHistory.map(r=>r.id)),new Set(history.map(r=>r.id)));assert.deepEqual(history.find(r=>r.id===shared.data.id).hintsUsed,[0]);assert.deepEqual(history.find(r=>r.id===different.data.id).hintsUsed,[1]);assert.equal(history.find(r=>r.id===different.data.id).activityId,adapted.id);
+  console.log('PASS shared activity/resource history, verified resource context, untouched legacy feedback and draft, and separate adapted assignments/hints');
 } finally {
   for(const profile of ['teacher','rocio','alejandra']) if(jars[profile])await api(profile,'/api/auth',null,'DELETE');
   // Remove QA records only from local Miniflare SQLite, leaving planned seed data intact.
@@ -87,8 +102,8 @@ try {
     const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(x=>x.name);
     if(tables.includes('sessions')) {
       db.exec('BEGIN');
-      for(const table of ['sessions','activities','assignments','exams','doubts','evidence','observations','responses']) {
-        db.prepare(`DELETE FROM ${table} WHERE id LIKE 'qa-%' OR json_extract(data,'$.sessionId') LIKE 'qa-%' OR json_extract(data,'$.assignmentId') LIKE 'qa-%'`).run();
+      for(const table of ['sessions','activities','resources','assignments','exams','doubts','evidence','observations','responses','drafts']) {
+        db.prepare(`DELETE FROM ${table} WHERE id LIKE 'qa-%' OR json_extract(data,'$.sessionId') LIKE 'qa-%' OR json_extract(data,'$.assignmentId') LIKE 'qa-%' OR json_extract(data,'$.activityId') LIKE 'qa-%' OR json_extract(data,'$.resourceId') LIKE 'qa-%'`).run();
       }
       if(originalStudent) db.prepare("UPDATE students SET data=?,updated_at=? WHERE id='rocio' AND json_extract(data,'$.nextStep') LIKE 'QA %'").run(originalStudentRow?.data || JSON.stringify(originalStudent),originalStudentRow?.updated_at || originalStudent.updatedAt || new Date().toISOString());
       if(originalSkill) db.prepare("UPDATE skills SET data=?,updated_at=? WHERE id='r-tildes' AND json_extract(data,'$.evidence')='QA shared evidence'").run(originalSkillRow?.data || JSON.stringify(originalSkill),originalSkillRow?.updated_at || originalSkill.updatedAt || new Date().toISOString());

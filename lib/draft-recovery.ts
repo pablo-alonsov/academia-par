@@ -1,7 +1,8 @@
 export type Procedure = {data:string;question:string;calculation:string;unitsAnswer:string};
 export type DraftValue = {answer:string;comment:string;hintsUsed:number[];fileIds:string[];selfAssessment:string;procedure:Procedure};
-export type DraftCopy = {value:DraftValue;clientRevision?:string;submissionId?:string;updatedAt?:string;pending?:boolean};
-export type DraftConflict = {name:string;local:DraftCopy;server:DraftCopy|null;baseRevision:string};
+export type DraftCopy = {value:DraftValue;clientRevision?:string;submissionId?:string;updatedAt?:string;pending?:boolean;label?:string;sourceActivityId?:string;sourceResourceId?:string};
+export type DraftConflict = {name:string;local:DraftCopy;server:DraftCopy|null;baseRevision:string;recovery?:boolean;resetsHints?:boolean};
+export type DraftIdentity = {activityId?:string;resourceId?:string};
 
 export const emptyDraft = ():DraftValue => ({answer:"",comment:"",hintsUsed:[],fileIds:[],selfAssessment:"",procedure:{data:"",question:"",calculation:"",unitsAnswer:""}});
 const selfLabels:Record<string,string> = {easy:"Fácil",some_doubt:"Con alguna duda",need_help:"Necesito ayuda"};
@@ -12,9 +13,32 @@ export function normalizeDraft(raw:any):DraftValue {
 export const hasDraftContent = (value:DraftValue) => Boolean(value.answer.trim()||value.comment.trim()||value.hintsUsed.length||value.fileIds.length||value.selfAssessment||Object.values(value.procedure).some(item=>item.trim()));
 export const sameDraftContent = (a:any,b:any) => JSON.stringify(normalizeDraft(a))===JSON.stringify(normalizeDraft(b));
 export const sameDraftVersion = (server:any,local:any) => Boolean(server&&((server.clientRevision&&server.clientRevision===local?.clientRevision)||sameDraftContent(server,local?.value)));
-export function draftCopy(row:any,local=false):DraftCopy {return {value:normalizeDraft(local?row?.value:row),clientRevision:row?.clientRevision,submissionId:row?.submissionId,updatedAt:row?.updatedAt,pending:local&&row?.pending===true};}
+export function draftCopy(row:any,local=false):DraftCopy {return {value:normalizeDraft(local?row?.value:row),clientRevision:row?.clientRevision,submissionId:row?.submissionId,updatedAt:row?.updatedAt,pending:local&&row?.pending===true,label:row?.label,sourceActivityId:row?.sourceActivityId||row?.activityId,sourceResourceId:row?.sourceResourceId||row?.resourceId};}
 export function mergeDraftCopies(copies:DraftCopy[]):DraftCopy[] {
-  return copies.map(copy=>({...copy,value:normalizeDraft(copy?.value)})).filter((copy,index,all)=>hasDraftContent(copy.value)&&all.findIndex(other=>sameDraftContent(other.value,copy.value))===index);
+  return copies.map(copy=>({...copy,value:normalizeDraft(copy?.value)})).filter((copy,index,all)=>hasDraftContent(copy.value)&&all.findIndex(other=>sameDraftContent(other.value,copy.value)&&other.sourceActivityId===copy.sourceActivityId&&other.sourceResourceId===copy.sourceResourceId)===index);
+}
+
+/** Hint indices describe one particular task, even when two tasks share a resource. */
+export function isDifferentDraftTarget(copy:DraftCopy,target:DraftIdentity):boolean {
+  if(copy.sourceActivityId)return copy.sourceActivityId!==target.activityId;
+  return Boolean(copy.sourceResourceId&&(target.activityId||copy.sourceResourceId!==target.resourceId));
+}
+
+export function chooseDraftCopy(conflict:DraftConflict,choice:'local'|'server',target:DraftIdentity,newId:()=>string=()=>crypto.randomUUID()) {
+  const chosen=choice==='local'?conflict.local:conflict.server;
+  const differentTarget=Boolean(chosen&&isDifferentDraftTarget(chosen,target));
+  const value=normalizeDraft(chosen?.value);
+  if(differentTarget)value.hintsUsed=[];
+  const pending=choice==='local'||chosen?.pending===true;
+  const newAttempt=differentTarget||Boolean(conflict.recovery&&choice==='local');
+  return {value,pending,resetsHints:differentTarget,clientRevision:pending?newId():chosen?.clientRevision||newId(),submissionId:newAttempt?newId():chosen?.submissionId||newId()};
+}
+
+/** Opening a recovery comparison is not permission to replace the current draft. */
+export function draftPersistenceState(current:DraftCopy&{baseRevision:string},conflict:DraftConflict|null,alternatives:DraftCopy[]) {
+  if(conflict?.recovery)return {copy:current,alternatives:mergeDraftCopies([...alternatives,conflict.local])};
+  if(conflict)return {copy:{...conflict.local,baseRevision:conflict.baseRevision,pending:true},alternatives};
+  return {copy:current,alternatives};
 }
 
 /** A browser clock cannot choose between two different pieces of pending work. */

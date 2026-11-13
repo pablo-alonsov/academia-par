@@ -42,3 +42,12 @@ test('unknown existing records, removed custom fields and ownership are not over
   const legacy={id:'r',title:'Recurso inicial',instructions:'Consigna anterior'};
   assert.ok(!Object.hasOwn(reconcileSeedRecord('resources',deleted,{...legacy,instructions:'Consigna nueva'},legacy),'instructions'));
 });
+
+test('new support guidance never declares customized or unknown instructions autonomous',()=>{
+ for(const domain of ['activities','resources']){
+  const legacy={id:'material',title:'Original',instructions:'Consigna prevista',materials:'Ficha original'},planned={...legacy,supportMode:'independent'};
+  assert.equal(reconcileSeedRecord(domain,legacy,planned,legacy).supportMode,'independent');
+  const custom={...legacy,instructions:'Ahora debe dictarlo la docente'};const result=reconcileSeedRecord(domain,custom,planned,legacy);assert.equal(result.instructions,custom.instructions);assert.equal(result.supportMode,'unspecified');assert.equal(reconcileSeedRecord(domain,result,planned).supportMode,'unspecified');
+  assert.equal(reconcileSeedRecord(domain,{...legacy,supportMode:'teacher'},planned,legacy).supportMode,'teacher');assert.equal(reconcileSeedRecord(domain,custom,planned).supportMode,'unspecified');
+ }
+});

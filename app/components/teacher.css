@@ -50,6 +50,9 @@
 .teacher-views .bank-card>.row:first-child{flex-wrap:wrap;gap:8px;align-items:flex-start}
 .teacher-views .bank-card>.row:first-child>.small{margin-left:auto;white-space:nowrap}
 .teacher-views .bank-meta{flex-wrap:wrap;gap:4px 10px;line-height:1.65}
+.teacher-views .teacher-support-badge{font-size:12px;white-space:normal;line-height:1.5}
+.teacher-dialog .teacher-assignment-support{margin:12px 0}
+.teacher-dialog .teacher-home-support-warning{border-left:3px solid var(--amber);background:var(--surface2);padding:12px 14px;margin:0 0 18px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
 .teacher-views .bank-bottom{flex-wrap:wrap;gap:8px 10px;align-items:center}
 .teacher-views .bank-bottom>.row{margin-left:auto;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 .teacher-views .bank-bottom .btn{min-height:44px}
