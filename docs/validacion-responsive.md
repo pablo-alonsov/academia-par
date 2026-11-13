@@ -180,3 +180,25 @@ Recorridos locales comprobados:
 Al finalizar se detuvo el servidor local y se restauró la copia exacta inicial: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero registros de QA, respuestas, borradores, archivos, sesiones o exámenes locales. La publicación y su comprobación posterior siguen en curso.
 
 La validación visual se realizó en Brave/Chromium con viewport emulado. No constituye una prueba nativa de Safari, teclado, cámara ni suspensión de iOS/Android; esos límites se mantienen.
+
+
+## Tareas asignadas al principio de Practicar · v17 · 13 de noviembre de 2026
+
+La ejecución local final de v17 completó **156 de 156 pruebas automatizadas**, TypeScript y comprobación de diferencias sin errores. La QA de navegador descrita a continuación terminó correctamente. Los resultados de v16 se conservan como revisión anterior. La publicación sigue en curso; no se afirma todavía que v17 esté desplegada.
+
+- Practicar prioriza **Lo que tienes asignado** cuando existen tareas docentes pendientes, incluidas las actividades externas asignadas. Debajo, **Más para practicar** mantiene el resto de ejercicios y recursos disponibles.
+- La condición de pendiente corresponde a cada asignación concreta y a su entrega. Un trabajo anterior del recurso o de otra asignación de la misma actividad no completa el nuevo encargo. La entrega retira la tarea del bloque pendiente y conserva el historial; no acredita por sí sola aprendizaje ni revisión docente.
+- Una asignación que el docente haya marcado Opcionales conserva su etiqueta. Los registros opcionales creados automáticamente por practicar libremente no aparecen como nuevas tareas docentes.
+- Si no existen tareas pendientes, permanece la vista habitual de Ejercicios y Recursos y materiales, sin añadir un bloque vacío de asignaciones. Se conservan filtros, favoritos, borradores y acceso al trabajo anterior.
+
+Recorridos comprobados exclusivamente en el entorno local de `127.0.0.1:5183`:
+
+- Alejandra, sin asignaciones: se mantiene la vista habitual de v16 y no aparece un bloque vacío de tareas asignadas.
+- Rocío, con cuatro tareas pendientes del fixture: dos encargos de matemáticas de la misma actividad, una actividad externa y una tarea explícitamente opcional del docente. Los registros opcionales automáticos y los encargos ya entregados quedan excluidos.
+- Entregar el encargo A reduce las pendientes de cuatro a tres; B continúa pendiente y recibe el foco. Filtrar por Inglés o cambiar a Recursos y materiales conserva las tres tareas asignadas en la parte superior, antes del catálogo opcional.
+- La última actividad externa permanece pendiente aunque haya un uso anterior del recurso. Entregarla reduce de una a cero las pendientes: desaparecen los encabezados del bloque asignado, vuelve la vista habitual de Practicar y el foco pasa a Ejercicios. El historial conserva los tres intentos de matemáticas del recorrido.
+- Distribución comprobada en PC de 1536 px de ancho y 1440×900, móvil 390×844 en oscuro y tableta 768×1024 en claro: tareas asignadas primero, catálogo después y sin desbordamiento horizontal del documento.
+
+Al terminar se detuvo el servidor local y se restauró la copia exacta inicial de D1: 2 alumnas, 30 habilidades, 119 actividades y 21 recursos; cero asignaciones, respuestas, exámenes, archivos, sesiones o borradores locales. Los fixtures no representan trabajos ni aprendizaje reales de las alumnas. La publicación y su comprobación posterior siguen en curso.
+
+La QA visual se realizó mediante Brave/Chromium con viewport emulado. No acredita validación nativa de Safari, teclado, cámara ni suspensión de iOS/Android.
