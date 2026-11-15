@@ -1,0 +1,97 @@
+.sw-simple-work .sw-simple-details,
+.sw-simple-resource .sw-simple-details {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 14px;
+}
+.sw-simple-work .sw-simple-details > summary,
+.sw-simple-resource .sw-simple-details > summary,
+.sw-simple-work .sw-draft-options > summary,
+.sw-simple-resource .sw-draft-options > summary {
+  min-height: 44px;
+  padding-block: 11px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+.sw-simple-work .sw-simple-details[open],
+.sw-simple-resource .sw-simple-details[open] {
+  padding-bottom: 14px;
+}
+.sw-simple-work .sw-simple-details > .field,
+.sw-simple-resource .sw-simple-details > .field {
+  margin: 8px 0 0;
+}
+.sw-simple-work .sw-simple-details p:last-child,
+.sw-simple-resource .sw-simple-details p:last-child {
+  margin-bottom: 0;
+}
+.sw-simple-work .sw-exercise-details {
+  margin-top: 16px;
+}
+.sw-simple-work .sw-exercise-details .sv-detail-meta {
+  gap: 8px 18px;
+  margin-block: 12px;
+}
+.sw-simple-work .sw-reference {
+  margin-top: 18px;
+}
+.sw-simple-work .sw-inline-hints {
+  min-width: 0;
+}
+.sw-simple-work .sw-inline-hints .row {
+  gap: 8px 12px;
+}
+.sw-simple-work .sw-inline-hints .btn {
+  min-height: 44px;
+  max-width: 100%;
+}
+.sw-simple-work .sw-inline-hints .sv-hint-list {
+  margin: 12px 0 0;
+}
+.sw-simple-work .sw-inline-hints .sv-hint-list p {
+  margin-bottom: 0;
+}
+.sw-simple-work .sw-upload-formats,
+.sw-simple-resource .sw-upload-formats {
+  border: 0;
+  padding-inline: 0;
+}
+.sw-simple-work .sw-upload-formats > summary,
+.sw-simple-resource .sw-upload-formats > summary {
+  font-weight: 500;
+  color: var(--muted);
+}
+.sw-simple-work .sw-draft-options,
+.sw-simple-resource .sw-draft-options {
+  min-width: 0;
+}
+.sw-simple-work .sw-draft-options > .btn,
+.sw-simple-resource .sw-draft-options > .btn {
+  margin-top: 6px;
+}
+.sw-simple-work .sw-history-collapse > .sw-history,
+.sw-simple-resource .sw-history-collapse > .sw-history {
+  margin-top: 12px;
+}
+.sw-simple-work .sw-history-collapse:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+@media (max-width: 600px) {
+  .sw-simple-work .sw-simple-details,
+  .sw-simple-resource .sw-simple-details {
+    padding-inline: 12px;
+  }
+  .sw-simple-work .sw-upload-formats,
+  .sw-simple-resource .sw-upload-formats {
+    padding-inline: 0;
+  }
+  .sw-simple-work .sw-inline-hints .row {
+    align-items: flex-start;
+  }
+}

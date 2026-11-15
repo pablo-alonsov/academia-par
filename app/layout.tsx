@@ -4,7 +4,7 @@ import "./globals.css";
 export const viewport:Viewport={width:'device-width',initialScale:1,viewportFit:'cover',interactiveWidget:'resizes-content'};
 
 export const metadata: Metadata = {
-  title: "Academia PAR",
+  title: "academia PAR",
   description: "Clases, actividades y seguimiento individual.",
   robots: { index: false, follow: false, noarchive: true },
   icons: {

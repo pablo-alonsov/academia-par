@@ -5,7 +5,7 @@ const base = process.env.ARP_PUBLIC_URL;
 const pin = process.env.ARP_TEST_PIN;
 if (!base || !pin) throw new Error('Supply ARP_PUBLIC_URL and ARP_TEST_PIN in the process environment.');
 const origin = new URL(base).origin;
-assert.equal(origin, 'https://academia-arp-privada.movingflair1.chatgpt.site');
+assert.equal(origin, 'https://academia-par.movingflair1.chatgpt.site');
 const jars = {rocio:'',alejandra:'',teacher:''};
 async function api(profile,path,{body,method=body?'POST':'GET'}={}) {
   const res=await fetch(origin+path,{redirect:'manual',method,headers:{Origin:origin,...(jars[profile]?{Cookie:jars[profile]}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -18,7 +18,7 @@ async function api(profile,path,{body,method=body?'POST':'GET'}={}) {
 try {
   const shell=await fetch(origin,{redirect:'manual'});
   assert.equal(shell.status,200,'Anonymous shell must not redirect to ChatGPT sign-in');
-  const html=await shell.text();assert.match(html, /Academia PAR/);assert.doesNotMatch(html,/Inicia sesión para acceder/);
+  const html=await shell.text();assert.match(html, /academia PAR/i);assert.doesNotMatch(html,/Inicia sesión para acceder/);
   assert.deepEqual((await api('rocio','/api/auth')).data,{profile:null});
   assert.equal((await api('rocio','/api/data')).status,401);
   for(const profile of ['rocio','alejandra']) {

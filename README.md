@@ -4,6 +4,8 @@ Academia para las clases individuales de Rocío (6.º Primaria) y Alejandra (2.�
 
 ## Acceso
 
+Enlace publicado: https://academia-par.movingflair1.chatgpt.site. El enlace anterior redirige al actual. Se conserva el mismo proyecto con sus datos D1 y archivos R2; las sesiones y preferencias locales pertenecen a cada origen, así que hay que volver a elegir perfil al usar la dirección nueva. Las copias de trabajo que solo existan sin sincronizar en el almacenamiento del enlace anterior no se trasladan automáticamente.
+
 Las alumnas abren el enlace y eligen su perfil sin contraseña y sin iniciar sesión en ChatGPT, por petición expresa. El servidor limita cada sesión a los datos del perfil elegido, pero cualquier persona con el enlace puede elegir o cambiar entre ambos perfiles: el selector no identifica personalmente a la alumna. El panel docente requiere su contraseña; el servidor guarda solamente su hash, aplica límites a intentos y usa una cookie HttpOnly.
 
 El acceso de Sites está configurado como público para permitir entrar directamente desde cualquier dispositivo. Las notas privadas y las funciones de gestión requieren la sesión docente validada en el servidor. Las sesiones de aplicación dependen de su token aleatorio y caducidad, no de una cuenta o cabecera de ChatGPT. Se solicita a los buscadores que no indexen la aplicación; esto no sustituye al control de permisos.
