@@ -1,0 +1,11 @@
+.math-text{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.math-token{font-family:"Cambria Math","STIX Two Math","Noto Sans Math",Georgia,serif;font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;letter-spacing:normal}
+.math-fraction{display:inline-grid;grid-template-rows:auto auto;text-align:center;vertical-align:middle;font-size:max(.86em,var(--arp-font-min,0px));line-height:1.08;margin-inline:.1em;padding-inline:.06em}
+.math-numerator{display:block;border-bottom:.065em solid currentColor;padding:0 .13em .1em}
+.math-denominator{display:block;padding:.1em .13em 0}
+.math-power{display:inline;line-height:inherit}
+.math-power sup{font-size:max(.65em,var(--arp-font-min,0px));line-height:0;vertical-align:super;margin-inline-start:.025em}
+.math-root{display:inline-flex;align-items:stretch;vertical-align:middle;line-height:1.1;margin-inline:.06em}
+.math-root-symbol{font-size:1.22em;line-height:1;align-self:center}
+.math-radicand{border-top:.065em solid currentColor;padding:.04em .08em 0 .03em;margin-top:.03em}
+.math-text :is(.math-fraction,.math-root){overflow:visible}
