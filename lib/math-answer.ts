@@ -1,4 +1,4 @@
-export type MathEntryKind = "fraction" | "power";
+export type MathEntryKind = "fraction" | "power" | "root";
 export type MathEntryResult = {text: string; error: null} | {text: null; error: string};
 
 function integerPart(value: string, maxDigits: number): string | null {
@@ -7,9 +7,16 @@ function integerPart(value: string, maxDigits: number): string | null {
 }
 
 /** Builds plain notation for an answer or procedure; it never calculates it. */
-export function buildMathEntry(kind: MathEntryKind, first: string, second: string): MathEntryResult {
-  if (kind !== "fraction" && kind !== "power") return {text: null, error: "Elige una fracción o una potencia."};
-  const a = integerPart(first, 12), b = integerPart(second, kind === "power" ? 6 : 12);
+export function buildMathEntry(kind: MathEntryKind, first: string, second = ""): MathEntryResult {
+  if (kind !== "fraction" && kind !== "power" && kind !== "root") return {text: null, error: "Elige una fracción, una potencia o una raíz."};
+  const a = integerPart(first, 12);
+  if (kind === "root") {
+    if (a === null) return {text: null, error: "Escribe un radicando entero no negativo de hasta 12 dígitos."};
+    if (a.startsWith("-")) return {text: null, error: "En estas raíces, el radicando no puede ser negativo."};
+    if (second.trim()) return {text: null, error: "La raíz solo necesita un radicando, sin una segunda parte."};
+    return {text: `√${a.replace(/^\+/, "")}`, error: null};
+  }
+  const b = integerPart(second, kind === "power" ? 6 : 12);
   if (a === null) return {text: null, error: kind === "fraction" ? "Escribe un numerador entero de hasta 12 dígitos." : "Escribe una base entera de hasta 12 dígitos."};
   if (b === null) return {text: null, error: kind === "fraction" ? "Escribe un denominador entero de hasta 12 dígitos." : "Escribe un exponente entero de hasta 6 dígitos."};
   if (kind === "fraction") {

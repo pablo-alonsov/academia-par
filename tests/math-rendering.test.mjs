@@ -50,12 +50,21 @@ test('teacher or pupil text is escaped rather than treated as HTML or executable
 
 test('math answer fields preserve the editable source and preview the same stored answer',async()=>{
  const {default:MathAnswerField}=await import('../app/components/MathAnswerField.tsx');
- const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Respuesta',subject:'Matemáticas',value:'3/4 y 2^3',onChange:()=>{},multiline:true,allowPowers:true}));
- assert.match(html,/<textarea[^>]*>3\/4 y 2\^3<\/textarea>/);
- assert.match(html,/math-fraction/);assert.match(html,/<sup>3<\/sup>/);
- assert.match(html,/Fracción/);assert.match(html,/Potencia/);
+ const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Respuesta',subject:'Matemáticas',value:'3/4 y 2^3; √49 × 2 ÷ 7',onChange:()=>{},multiline:true,allowExpressions:true}));
+ assert.match(html,/<textarea[^>]*>3\/4 y 2\^3; √49 × 2 ÷ 7<\/textarea>/);
+ assert.match(html,/math-fraction/);assert.match(html,/<sup>3<\/sup>/);assert.match(html,/math-root/);
+ assert.match(html,/Fracción/);assert.match(html,/Potencia/);assert.match(html,/Raíz/);
+ assert.match(html,/Insertar signo de multiplicación/);assert.match(html,/Insertar signo de división/);
  const plain=renderToStaticMarkup(createElement(MathAnswerField,{label:'Respuesta',subject:'Lengua',value:'Rocío',onChange:()=>{}}));
- assert.ok(plain.includes('Rocío'));assert.ok(!plain.includes('math-fraction'));assert.ok(!plain.includes('Potencia'));assert.ok(!plain.includes('Fracción'));
- const numeric=renderToStaticMarkup(createElement(MathAnswerField,{label:'Resultado',subject:'Matemáticas',value:'6/8',onChange:()=>{},allowPowers:false}));
- assert.match(numeric,/Fracción/);assert.ok(!numeric.includes('Potencia'));assert.ok(numeric.includes('value="6/8"'));
+ assert.ok(plain.includes('Rocío'));assert.ok(!plain.includes('math-fraction'));assert.ok(!plain.includes('Potencia'));assert.ok(!plain.includes('Fracción'));assert.ok(!plain.includes('Insertar signo de multiplicación'));
+ const numeric=renderToStaticMarkup(createElement(MathAnswerField,{label:'Resultado',subject:'Matemáticas',value:'6/8',onChange:()=>{},allowExpressions:false}));
+ assert.match(numeric,/Fracción/);assert.ok(!numeric.includes('Potencia'));assert.ok(!numeric.includes('Raíz'));assert.ok(!numeric.includes('Insertar signo de división'));assert.ok(numeric.includes('value="6/8"'));
+});
+
+test('roots or multiplication alone trigger a readable preview without implying evaluation',async()=>{
+ const {default:MathAnswerField}=await import('../app/components/MathAnswerField.tsx');
+ for(const value of ['√49','2 × 3 ÷ 6']){
+  const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Cálculo',subject:'Matemáticas',value,onChange:()=>{},multiline:true}));
+  assert.match(html,/Así se verá/);assert.ok(!html.includes('Resultado automático correcto'));assert.ok(!html.includes('aria-live'));
+ }
 });

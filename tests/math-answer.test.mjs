@@ -26,6 +26,20 @@ test('powers preserve negative-base precedence and allow zero or signed exponent
   assert.deepEqual(buildMathEntry('power','0','-1'),{text:'0^-1',error:null});
 });
 
+test('root entry accepts one bounded nonnegative integer without simplifying or evaluating it',()=>{
+  assert.deepEqual(buildMathEntry('root','49'),{text:'√49',error:null});
+  assert.deepEqual(buildMathEntry('root','  +49  '),{text:'√49',error:null});
+  assert.deepEqual(buildMathEntry('root','0'),{text:'√0',error:null});
+  assert.deepEqual(buildMathEntry('root','2'),{text:'√2',error:null});
+  assert.deepEqual(buildMathEntry('root','00049','  '),{text:'√00049',error:null});
+  assert.deepEqual(buildMathEntry('root','123456789012'),{text:'√123456789012',error:null});
+  for(const invalid of ['-9','−9','-0','−0','',' ','1.5','1,5','2+3','2^3','√49','(49)','x','□','Infinity','1e3','Math.sqrt(49)','1234567890123']){
+    const result=buildMathEntry('root',invalid);
+    assert.equal(result.text,null,invalid);assert.equal(typeof result.error,'string');
+  }
+  for(const second of ['3','0','x','<script>'])assert.equal(buildMathEntry('root','49',second).text,null);
+});
+
 test('entry rejects incomplete, decimal, symbolic, compound and executable text',()=>{
   for(const invalid of ['', ' ','1.5','1,5','1 2','1e3','2^3','2³','(2)','--2','− 2','2/3','□','x','<script>','Math.pow(2,3)']){
     for(const kind of ['fraction','power']){
@@ -33,7 +47,7 @@ test('entry rejects incomplete, decimal, symbolic, compound and executable text'
       assert.equal(buildMathEntry(kind,'2',invalid).text,null,`${kind} second ${invalid}`);
     }
   }
-  assert.equal(buildMathEntry('root','2','3').text,null);
+  assert.equal(buildMathEntry('unknown','2','3').text,null);
 });
 
 test('per-part digit limits exclude signs and are validated before any computation',()=>{
@@ -49,6 +63,19 @@ test('insertion replaces exactly the selected range and returns the caret after 
   assert.deepEqual(insertMathEntry('Respuesta: x.',11,12,'3/4',100),{value:'Respuesta: 3/4.',start:14,end:14,inserted:true});
   assert.deepEqual(insertMathEntry('abc',1,1,'2^3',6),{value:'a2^3bc',start:4,end:4,inserted:true});
   assert.deepEqual(insertMathEntry('3/4',0,3,'3/4',3),{value:'3/4',start:3,end:3,inserted:true});
+});
+
+test('multiplication and division signs insert literally at the cursor or replace only the selection',()=>{
+  for(const operator of ['×','÷']){
+    const replace=insertMathEntry('4?2',1,2,operator,3);
+    assert.deepEqual(replace,{value:`4${operator}2`,start:2,end:2,inserted:true});
+    assert.deepEqual(insertMathEntry('42',1,1,operator,3),replace);
+    assert.deepEqual(JSON.parse(JSON.stringify({answer:replace.value})),{answer:`4${operator}2`});
+    assert.deepEqual(insertMathEntry('42',1,1,operator,2),{value:'42',start:1,end:1,inserted:false});
+    assert.deepEqual(insertMathEntry('4?',1,2,operator,2),{value:`4${operator}`,start:2,end:2,inserted:true});
+    assert.deepEqual(insertMathEntry('4',null,null,operator,2),{value:`4${operator}`,start:2,end:2,inserted:true});
+  }
+  assert.deepEqual(insertMathEntry('Resultado: x.',11,12,buildMathEntry('root','49').text,100),{value:'Resultado: √49.',start:14,end:14,inserted:true});
 });
 
 test('unknown selections append; finite offsets are safely clamped and ordered',()=>{

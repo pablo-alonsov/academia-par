@@ -14,21 +14,21 @@ type Props = {
   multiline?: boolean;
   rows?: number;
   maxLength?: number;
-  allowPowers?: boolean;
+  allowExpressions?: boolean;
   inputMode?: "text" | "decimal";
 };
 type Selection = { start: number | null; end: number | null };
 const wholeInteger = /^[+\-−]?\d{1,12}$/;
 
 /** The editable and submitted value always remains ordinary text. */
-export default function MathAnswerField({ label, value, onChange, subject, multiline = false, rows = 4, maxLength = multiline ? 20000 : 1000, allowPowers = true, inputMode }: Props) {
+export default function MathAnswerField({ label, value, onChange, subject, multiline = false, rows = 4, maxLength = multiline ? 20000 : 1000, allowExpressions = true, inputMode }: Props) {
   const id = useId(), mathematical = isMathSubject(subject);
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null), firstField = useRef<HTMLInputElement>(null), secondField = useRef<HTMLInputElement>(null);
   const selection = useRef<Selection>({ start: null, end: null });
   const [kind, setKind] = useState<MathEntryKind | null>(null), [first, setFirst] = useState(""), [second, setSecond] = useState(""), [error, setError] = useState("");
-  const showPreview = useMemo(() => mathematical && /[\/^²³⁰¹⁴⁵⁶⁷⁸⁹]/.test(value) && tokenizeMathText(value).some(token => token.type !== "text"), [mathematical, value]);
-  const entry = kind ? buildMathEntry(kind, first, second) : null;
-  const partNames = kind === "power" ? ["Base", "Exponente"] : ["Numerador", "Denominador"];
+  const showPreview = useMemo(() => mathematical && (/[√×÷]/.test(value) || /[\/^²³⁰¹⁴⁵⁶⁷⁸⁹]/.test(value) && tokenizeMathText(value).some(token => token.type !== "text")), [mathematical, value]);
+  const entry = kind ? buildMathEntry(kind, first, kind === "root" ? "" : second) : null;
+  const partNames = kind === "root" ? ["Número de la raíz"] : kind === "power" ? ["Base", "Exponente"] : ["Numerador", "Denominador"];
   const signNames = kind === "power" ? ["de la base", "del exponente"] : ["del numerador", "del denominador"];
   const disabled = () => !field.current || field.current.matches(":disabled");
   const remember = (element: HTMLInputElement | HTMLTextAreaElement) => { selection.current = { start: element.selectionStart, end: element.selectionEnd }; };
@@ -39,7 +39,7 @@ export default function MathAnswerField({ label, value, onChange, subject, multi
     if (next.start !== null && next.end !== null) element.setSelectionRange(next.start, next.end);
   });
   useEffect(() => { if (kind) { firstField.current?.focus({ preventScroll: true }); firstField.current?.select(); } }, [kind]);
-  useEffect(() => { if (!mathematical || !allowPowers && kind === "power") { setKind(null); setError(""); } }, [mathematical, allowPowers, kind]);
+  useEffect(() => { if (!mathematical || !allowExpressions && (kind === "power" || kind === "root")) { setKind(null); setError(""); } }, [mathematical, allowExpressions, kind]);
   const openBuilder = (next: MathEntryKind) => {
     if (disabled()) return;
     if (kind === next) { firstField.current?.focus({ preventScroll: true }); return; }
@@ -58,12 +58,12 @@ export default function MathAnswerField({ label, value, onChange, subject, multi
   };
   const insertBuilt = () => {
     if (disabled() || !kind) return;
-    const result = buildMathEntry(kind, first, second);
-    if (result.text === null) { setError(result.error); (wholeInteger.test(first.trim()) ? secondField.current : firstField.current)?.focus({ preventScroll: true }); return; }
+    const result = buildMathEntry(kind, first, kind === "root" ? "" : second);
+    if (result.text === null) { setError(result.error); (kind !== "root" && wholeInteger.test(first.trim()) ? secondField.current : firstField.current)?.focus({ preventScroll: true }); return; }
     insert(result.text);
   };
   const toggleSign = (index: number) => {
-    if (disabled()) return;
+    if (disabled() || kind === "root") return;
     const current = (index ? second : first).trim(), next = /^[-−]/.test(current) ? current.slice(1) : `-${current.replace(/^\+/, "")}`;
     (index ? setSecond : setFirst)(next); setError("");
     const element = index ? secondField.current : firstField.current;
@@ -88,14 +88,15 @@ export default function MathAnswerField({ label, value, onChange, subject, multi
       {showPreview && <div className="ma-answer-preview" role="group" aria-labelledby={`${id}-preview-title`}><span id={`${id}-preview-title`} className="ma-preview-label">Así se verá</span><div className="ma-preview-content" tabIndex={0}><MathText subject={subject}>{value}</MathText></div></div>}
       <div className="ma-toolbar" role="group" aria-label={`Insertar en: ${label}`}>
         <button type="button" className="btn secondary" aria-expanded={kind === "fraction"} aria-controls={kind === "fraction" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("fraction")}>Fracción</button>
-        {allowPowers && <button type="button" className="btn secondary" aria-expanded={kind === "power"} aria-controls={kind === "power" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("power")}>Potencia</button>}
+        {allowExpressions && <><button type="button" className="btn secondary" aria-expanded={kind === "power"} aria-controls={kind === "power" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("power")}>Potencia</button><button type="button" className="btn secondary" aria-expanded={kind === "root"} aria-controls={kind === "root" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("root")}>Raíz</button></>}
         <button type="button" className="btn secondary ma-minus" aria-label="Insertar signo menos" onPointerDown={preserveMainFocus} onClick={() => insert("-")}>−</button>
+        {allowExpressions && <><button type="button" className="btn secondary ma-operator" aria-label="Insertar signo de multiplicación" onPointerDown={preserveMainFocus} onClick={() => insert(" × ")}>×</button><button type="button" className="btn secondary ma-operator" aria-label="Insertar signo de división" onPointerDown={preserveMainFocus} onClick={() => insert(" ÷ ")}>÷</button></>}
       </div>
       {kind && <div id={`${id}-builder`} className="ma-builder" role="group" aria-labelledby={`${id}-builder-title`} onKeyDown={event => {
         if (event.key === "Enter" && event.target instanceof HTMLInputElement && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); insertBuilt(); }
       }}>
-        <h3 id={`${id}-builder-title`}>{kind === "fraction" ? "Insertar fracción" : "Insertar potencia"}</h3>
-        <div className="ma-builder-body"><div className="ma-parts">{partNames.map((name, index) => <div key={`${kind}:${index}`} className="ma-part"><label htmlFor={`${id}-part-${index}`}>{name}</label><div className="ma-part-input"><input id={`${id}-part-${index}`} ref={index ? secondField : firstField} type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} maxLength={32} aria-describedby={error ? `${id}-error` : undefined} value={index ? second : first} onChange={event => { (index ? setSecond : setFirst)(event.target.value); setError(""); }}/><button type="button" className="btn secondary ma-minus" aria-label={`Cambiar signo ${signNames[index]}`} onPointerDown={event => event.preventDefault()} onClick={() => toggleSign(index)}>−</button></div></div>)}</div><div className="ma-builder-preview" tabIndex={0} aria-label="Vista previa de la expresión">{entry?.text ? <MathText subject={subject}>{entry.text}</MathText> : kind === "fraction" ? <MathText subject={subject}>{`${wholeInteger.test(first.trim()) ? first.trim() : "□"}/${wholeInteger.test(second.trim()) ? second.trim() : "□"}`}</MathText> : <span className="ma-empty-power" role="math" aria-label={`${first || "base"} elevado a ${second || "exponente"}`}><span aria-hidden="true">{first || "□"}<sup>{second || "□"}</sup></span></span>}</div></div>
+        <h3 id={`${id}-builder-title`}>{kind === "root" ? "Insertar raíz cuadrada" : kind === "fraction" ? "Insertar fracción" : "Insertar potencia"}</h3>
+        <div className="ma-builder-body"><div className={`ma-parts${kind === "root" ? " ma-parts-single" : ""}`}>{partNames.map((name, index) => <div key={`${kind}:${index}`} className="ma-part"><label htmlFor={`${id}-part-${index}`}>{name}</label><div className="ma-part-input"><input id={`${id}-part-${index}`} ref={index ? secondField : firstField} type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} maxLength={32} aria-describedby={error ? `${id}-error` : kind === "root" ? `${id}-root-help` : undefined} value={index ? second : first} onChange={event => { (index ? setSecond : setFirst)(event.target.value); setError(""); }}/>{kind !== "root" && <button type="button" className="btn secondary ma-minus" aria-label={`Cambiar signo ${signNames[index]}`} onPointerDown={event => event.preventDefault()} onClick={() => toggleSign(index)}>−</button>}</div>{kind === "root" && <small id={`${id}-root-help`} className="ma-part-help">Número entero, de 0 en adelante.</small>}</div>)}</div><div className="ma-builder-preview" tabIndex={0} aria-label="Vista previa de la expresión">{entry?.text ? <MathText subject={subject}>{entry.text}</MathText> : kind === "root" ? <span className="ma-empty-root" role="math" aria-label="Raíz cuadrada de la casilla"><span aria-hidden="true">√□</span></span> : kind === "fraction" ? <MathText subject={subject}>{`${wholeInteger.test(first.trim()) ? first.trim() : "□"}/${wholeInteger.test(second.trim()) ? second.trim() : "□"}`}</MathText> : <span className="ma-empty-power" role="math" aria-label={`${first || "base"} elevado a ${second || "exponente"}`}><span aria-hidden="true">{first || "□"}<sup>{second || "□"}</sup></span></span>}</div></div>
         <div className="ma-builder-actions"><button type="button" className="btn primary" onClick={insertBuilt}>Insertar</button><button type="button" className="btn secondary" onClick={cancel}>Cancelar</button></div>
       </div>}
       {error && <p id={`${id}-error`} className="error-text ma-error" role="alert">{error}</p>}

@@ -19,10 +19,11 @@ test('open writing, paper and explanations always await teacher review',()=>{
   for(const type of ['open','paper','external','text']) assert.equal(grade({type,answer:'modelo'},'modelo'),null);
 });
 test('math entry notation never bypasses a numeric-result or missing-exponent objective',()=>{
-  for(const answer of ['2^3','2³'])assert.equal(grade({type:'numeric',answer:'8'},answer),'incorrect');
+  for(const answer of ['2^3','2³','√64','4×2','16÷2'])assert.equal(grade({type:'numeric',answer:'8'},answer),'incorrect');
   for(const answer of ['10^3','10³'])assert.equal(grade({type:'numeric',answer:'3'},answer),'incorrect');
   assert.equal(grade({type:'numeric',answer:'8'},'8'),'correct');
   assert.equal(grade({type:'fraction',answer:'3/4'},'6/8'),'correct');
   assert.equal(grade({type:'fraction',answer:'3/4'},'0,75'),'correct');
   assert.equal(grade({type:'open',answer:'8'},'2³'),null);
+  for(const answer of ['√64','4×2','16÷2'])assert.equal(grade({type:'open',answer:'8'},answer),null);
 });
