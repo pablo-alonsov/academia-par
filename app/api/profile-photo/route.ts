@@ -3,6 +3,7 @@ import { database, digest, fail, HttpError, json, ownStudent, requireProfile, sa
 import { actionPatch, collectAction, get, required, studentPatchStatement, trackChange, type RecordData } from "@/lib/server-data";
 import { detectImageType } from "@/lib/upload-format";
 import { avatarUrl, MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TYPES, validAvatarFile } from "@/lib/server-avatar";
+import { commitStudentNotification, triggerNotificationDelivery } from "@/lib/server-notifications";
 export const dynamic="force-dynamic";
 
 export async function POST(request:Request){
@@ -33,11 +34,12 @@ export async function POST(request:Request){
         item.updatedAt=now;
         // The winning insertion and profile selection are atomic. Replaying an
         // older upload cannot reactivate it after another photo/icon was chosen.
-        await database().batch([database().prepare("INSERT OR IGNORE INTO files (id,student_id,data,updated_at) VALUES (?,?,?,?)").bind(id,studentId,JSON.stringify(item),now),studentPatchStatement(studentId,{avatar:"photo",avatarFileId:id},["avatarUrl"],{fileId:id,nonce})]);
+        await commitStudentNotification({profile,action:"uploadProfilePhoto",after:item,statements:[database().prepare("INSERT OR IGNORE INTO files (id,student_id,data,updated_at) VALUES (?,?,?,?)").bind(id,studentId,JSON.stringify(item),now),studentPatchStatement(studentId,{avatar:"photo",avatarFileId:id},["avatarUrl"],{fileId:id,nonce})],guard:{sql:"EXISTS (SELECT 1 FROM files WHERE id=? AND json_extract(data,'$._profileUploadNonce')=?)",bindings:[id,nonce]}});
         const saved=await required("files",id);if(saved.key!==key)await bucket.delete(key);check(saved);
         return {id,avatarUrl:await currentUrl(),...(saved.key!==key?{alreadyUploaded:true}:{})};
       }catch(error){try{const saved=await get("files",id);if(!saved || saved.key!==key)await bucket.delete(key);}catch{}throw error;}
     });
+    if(profile!=="teacher")await triggerNotificationDelivery();
     return json({ok:true,...result,...await actionPatch(profile,changes)});
   }catch(error){return fail(error);}
 }

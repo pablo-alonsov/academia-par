@@ -106,3 +106,8 @@ La adaptación móvil utiliza áreas seguras, viewport visual para los formulari
 Las fotos JPEG y las HEIC/HEIF que el navegador pueda decodificar se preparan como JPEG con un lado máximo de 2560 px, sin ampliar originales pequeños. Se aceptan originales de preparación de hasta 20 MiB; el archivo enviado debe caber en 8 MiB. Si no hay decodificador HEIC, se puede conservar el original dentro de ese límite para descargarlo, sin prometer previsualización. El servidor valida el contenido real del archivo y evita duplicados al reintentar una misma subida. La matriz de validación y los límites de las pruebas de Safari, cámara y teclado nativos están en `docs/validacion-responsive.md`.
 
 El cambio de perfil está disponible en el menú lateral y en el desplegable del avatar superior. La ayuda del menú se muestra una vez por perfil y navegador, se cierra automáticamente tras unos 12 segundos (se pausa al leerla con el puntero o el teclado), puede cerrarse manualmente y puede volver a abrirse desde el avatar. Las transiciones respetan la preferencia de movimiento reducido.
+
+
+## Avisos por correo
+
+La conexión con Resend está preparada para notificar al docente las acciones confirmadas de Rocío y Alejandra, con el nombre visible academia PAR. El panel Hoy y esta semana muestra el estado real y los últimos avisos. Sin RESEND_API_KEY y NOTIFICATION_FROM no se envían correos. La activación, el alcance, los límites de reintento y la validación se detallan en [docs/avisos-correo.md](docs/avisos-correo.md). El destinatario y las credenciales no se exponen en los datos de las alumnas.

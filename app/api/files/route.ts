@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { digest, fail, HttpError, json, ownStudent, requireProfile, sameOrigin } from "@/lib/server-auth";
 import { get, recordStatement, required, type RecordData } from "@/lib/server-data";
 import { detectUploadType, MAX_UPLOAD_BYTES } from "@/lib/upload-format";
+import { commitStudentNotification, triggerNotificationDelivery } from "@/lib/server-notifications";
 export const dynamic="force-dynamic";
 function uploadResult(item:RecordData,alreadyUploaded=false){return json({id:item.id,url:item.url,name:item.name,shared:item.shared,type:item.type,size:item.size,...(alreadyUploaded?{alreadyUploaded:true}:{})});}
 function checkReplay(old:RecordData,item:RecordData){
@@ -33,10 +34,11 @@ export async function POST(request:Request) {
     await env.BUCKET.put(key,bytes,{httpMetadata:{contentType:type}});
     try {
       // Immutable candidate keys avoid one concurrent retry overwriting another.
-      await recordStatement("files",item,true).run();
+      await commitStudentNotification({profile,action:"uploadFile",after:item,statements:[recordStatement("files",item,true)]});
       const saved=await required("files",id);
       if(saved.key!==key)await env.BUCKET.delete(key);
       checkReplay(saved,item);
+      if(profile!=="teacher")await triggerNotificationDelivery();
       return uploadResult(saved,saved.key!==key);
     }catch(error){
       // If D1 is temporarily unavailable, retain the object rather than risk

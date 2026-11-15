@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
 // Separate domain tables keep ownership independent of editable teaching payloads.
 function entity(name: string) {
@@ -35,3 +35,23 @@ export const loginAttempts = sqliteTable("login_attempts", {
   count: integer("count").notNull(),
   resetAt: integer("reset_at").notNull(),
 });
+
+// Teacher-only delivery metadata, deliberately outside student data snapshots.
+export const notificationOutbox = sqliteTable("notification_outbox", {
+  id: text("id").primaryKey(),
+  studentId: text("student_id"),
+  eventJson: text("event_json").notNull(),
+  status: text("status").notNull().default("pending"),
+  occurredAt: text("occurred_at").notNull(),
+  createdAt: text("created_at").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  generation: integer("generation").notNull().default(0),
+  firstAttemptAt: integer("first_attempt_at"),
+  nextAttemptAt: integer("next_attempt_at").notNull().default(0),
+  leaseToken: text("lease_token"),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  deliveryJson: text("delivery_json"),
+  providerId: text("provider_id"),
+  acceptedAt: text("accepted_at"),
+  lastError: text("last_error"),
+}, table => [index("notification_outbox_pending").on(table.status,table.nextAttemptAt,table.occurredAt)]);

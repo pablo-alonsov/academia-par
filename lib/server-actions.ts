@@ -5,6 +5,7 @@ import { ACADEMY_START_DATE, isTrackingDate } from "./academy-config";
 import { PROFILE_COLORS, PROFILE_AVATARS } from "./profile-customization";
 import { validAvatarFile } from "./server-avatar";
 import { ACTIVITY_SUPPORT_OPTIONS } from "./activity-support";
+import { commitStudentNotification } from "./server-notifications";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -52,11 +53,12 @@ async function resourceIds(value:unknown,studentId:string,max=30){if(!Array.isAr
 function submissionIdentity(studentId:string,value:unknown){if(value===undefined)return {id:crypto.randomUUID(),submissionId:undefined};if(typeof value!=="string"||!/^[A-Za-z0-9_-]{8,128}$/.test(value))throw new HttpError(400,"El identificador de la entrega no es válido.");return {id:`response:${studentId}:${value}`,submissionId:value};}
 function sameResponseContext(old:RecordData,studentId:string,activityId:string|undefined,resourceId:string|undefined){return old.studentId===studentId&&old.activityId===activityId&&(old.resourceId===resourceId||Boolean(activityId&&old.resourceId==null));}
 async function replayResponse(id:string,studentId:string,activityId:string|undefined,resourceId:string|undefined){const old=await get("responses",id);if(!old)return null;if(!sameResponseContext(old,studentId,activityId,resourceId))throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");trackChange("responses",id);if(old.assignmentId)trackChange("assignments",old.assignmentId);if(activityId||resourceId)trackChange("drafts",draftId(studentId,activityId?"activity":"resource",activityId||resourceId!));return old;}
-async function saveSubmission(item:RecordData,draft:string,assignment?:RecordData,draftRevision?:unknown){
+async function saveSubmission(item:RecordData,draft:string,assignment?:RecordData,draftRevision?:unknown,notification?:{profile:Profile;action:string;related?:{activity?:RecordData;resource?:RecordData;assignment?:RecordData}}){
   const nonce=crypto.randomUUID();item._submissionNonce=nonce;const statements=[recordStatement("responses",item,true)];
   if(assignment)statements.push(submissionStatement("assignments",assignment,item.id,nonce,true));
   if(draftRevision!==undefined){const expected=cleanString(draftRevision,150);trackChange("drafts",draft);statements.push(database().prepare("DELETE FROM drafts WHERE id=? AND json_extract(data,'$.clientRevision')=? AND EXISTS (SELECT 1 FROM responses WHERE id=? AND json_extract(data,'$._submissionNonce')=?)").bind(draft,expected,item.id,nonce));}
-  await database().batch(statements);
+  if(notification)await commitStudentNotification({...notification,after:item,statements,guard:{sql:"EXISTS (SELECT 1 FROM responses WHERE id=? AND json_extract(data,'$._submissionNonce')=?)",bindings:[item.id,nonce]}});
+  else await database().batch(statements);
   const saved=await required("responses",item.id);if(!sameResponseContext(saved,item.studentId,item.activityId,item.resourceId))throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");return saved;
 }
 function newObservation(skill:RecordData,data:RecordData,sessionId?:string) {
@@ -198,7 +200,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     if(["choice","numeric","fraction","text"].includes(activity.type)?!answer.trim():!answer.trim()&&!data.fileIds?.length&&!procedureFilled(steps))throw new HttpError(400,"Escribe una respuesta, explica el procedimiento o adjunta tu trabajo.");
     const assessment=selfAssessment(data.selfAssessment,true),hints=hintsUsed(data.hintsUsed,activity.hints?.length || 0);
     await ensureFileAccess(profile,data.fileIds,studentId);
-    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,assignmentId:assignment.id,activityId:activity.id,...(resourceId?{resourceId}:{}),answer,hintsUsed:hints,selfAssessment:assessment,procedure:steps,comment:text(data.comment,5000),autoResult:grade(activity,answer),reviewStatus:"pending",fileIds:data.fileIds || [],createdAt:new Date().toISOString()},draftId(studentId,"activity",activity.id),optional,data.draftRevision);
+    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,assignmentId:assignment.id,activityId:activity.id,...(resourceId?{resourceId}:{}),answer,hintsUsed:hints,selfAssessment:assessment,procedure:steps,comment:text(data.comment,5000),autoResult:grade(activity,answer),reviewStatus:"pending",fileIds:data.fileIds || [],createdAt:new Date().toISOString()},draftId(studentId,"activity",activity.id),optional,data.draftRevision,{profile,action,related:{activity,assignment,...(resourceId?{resource:await required("resources",resourceId)}:{})}});
     return {id:item.id,autoResult:item.autoResult,reviewStatus:item.reviewStatus};
   }
   if(action==="reviewResponse") {
@@ -211,7 +213,8 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const question=text(data.question,5000);if(!question.trim()) throw new HttpError(400,"Escribe tu duda.");
     if(data.submissionId!==undefined && (typeof data.submissionId!=="string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.submissionId)))throw new HttpError(400,"El identificador de la duda no es válido.");
     const item={id:data.submissionId?`doubt:${studentId}:${data.submissionId.toLowerCase()}`:crypto.randomUUID(),studentId,question,status:"pending",createdAt:new Date().toISOString()};
-    const inserted=await recordStatement("doubts",item,true).run();const saved=await required("doubts",item.id);
+    const before=await get("doubts",item.id);
+    const [inserted]=await commitStudentNotification({profile,action,before,after:item,statements:[recordStatement("doubts",item,true)]});const saved=await required("doubts",item.id);
     if(saved.studentId!==studentId || saved.question!==question)throw new HttpError(409,"Esta duda ya se envió con otro texto. Abre una nueva duda para continuar.");
     return {id:item.id,...(inserted.meta.changes?{}:{alreadySubmitted:true})};
   }
@@ -238,7 +241,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
       const payload={...Object.fromEntries(editable.filter(k=>item[k]!==undefined).map(k=>[k,item[k]])),updatedAt:now};
       // SQL ownership guard also blocks simultaneous chosen-ID collisions or a
       // concurrent teacher reassignment after the ownership check above.
-      const saved=await database().prepare("INSERT INTO exams (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=json_patch(exams.data,excluded.data),updated_at=excluded.updated_at WHERE exams.student_id=?").bind(item.id,profile,JSON.stringify(payload),now,profile).run();
+      const [saved]=await commitStudentNotification({profile,action,before:old,after:{...item,...payload},statements:[database().prepare("INSERT INTO exams (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=json_patch(exams.data,excluded.data),updated_at=excluded.updated_at WHERE exams.student_id=?").bind(item.id,profile,JSON.stringify(payload),now,profile)]});
       if(saved.meta.changes===0)throw new HttpError(403,"Solo puedes modificar tus propios exámenes.");
     }
     return {id:item.id};
@@ -249,7 +252,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     if(profile==="teacher")await database().prepare("DELETE FROM exams WHERE id=?").bind(old.id).run();
     else {
       ownStudent(profile,old.studentId);if(data.studentId!==undefined)ownStudent(profile,data.studentId);
-      const removed=await database().prepare("DELETE FROM exams WHERE id=? AND student_id=?").bind(old.id,profile).run();
+      const [removed]=await commitStudentNotification({profile,action,before:old,after:null,statements:[database().prepare("DELETE FROM exams WHERE id=? AND student_id=?").bind(old.id,profile)]});
       if(removed.meta.changes===0)throw new HttpError(403,"Solo puedes eliminar tus propios exámenes.");
     }
     return {id:old.id};
@@ -273,7 +276,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const resource=await required("resources",data.resourceId);if(!allowedContent(resource,studentId))throw new HttpError(403,"Este recurso no pertenece a tu perfil.");
     const identity=submissionIdentity(studentId,data.submissionId),replay=await replayResponse(identity.id,studentId,undefined,resource.id);if(replay)return {id:replay.id,alreadySubmitted:true};
     await ensureFileAccess(profile,data.fileIds,studentId);
-    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,resourceId:resource.id,kind:"resource-use",answer:text(data.answer,30000),comment:text(data.comment,5000),selfAssessment:selfAssessment(data.selfAssessment),procedure:procedure(data.procedure),hintsUsed:hintsUsed(data.hintsUsed,0),fileIds:data.fileIds || [],autoResult:null,reviewStatus:"pending",createdAt:new Date().toISOString()},draftId(studentId,"resource",resource.id),undefined,data.draftRevision);return {id:item.id};
+    const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,resourceId:resource.id,kind:"resource-use",answer:text(data.answer,30000),comment:text(data.comment,5000),selfAssessment:selfAssessment(data.selfAssessment),procedure:procedure(data.procedure),hintsUsed:hintsUsed(data.hintsUsed,0),fileIds:data.fileIds || [],autoResult:null,reviewStatus:"pending",createdAt:new Date().toISOString()},draftId(studentId,"resource",resource.id),undefined,data.draftRevision,{profile,action,related:{resource}});return {id:item.id};
   }
   if(action==="saveEvidence") {
     const studentId=validateStudent(data.studentId);
@@ -287,12 +290,15 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const clientRevision=data.clientRevision===undefined?crypto.randomUUID():cleanString(data.clientRevision,150);if(!clientRevision.trim())throw new HttpError(400,"La revisión del borrador no es válida.");
     if(data.baseRevision!==undefined){const expected=cleanString(data.baseRevision,150);trackChange("drafts",id);if(old?.clientRevision===clientRevision)return {id,alreadySaved:true};if(old?old.clientRevision!==expected:expected!=="")return {id,conflict:true};}
     const item:RecordData={id,studentId,targetType:kind,[kind==="activity"?"activityId":"resourceId"]:target.id,answer:text(data.answer,30000),comment:text(data.comment,5000),hintsUsed:hintsUsed(data.hintsUsed,kind==="activity"?target.hints?.length || 0:0),fileIds:data.fileIds || [],selfAssessment:selfAssessment(data.selfAssessment),procedure:procedure(data.procedure),clientRevision,createdAt:old?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
-    if(data.baseRevision===undefined)await put("drafts",item);
-    else{trackChange("drafts",id);const saved=data.baseRevision===""?await recordStatement("drafts",item,true).run():await database().prepare("UPDATE drafts SET data=?,updated_at=? WHERE id=? AND student_id=? AND json_extract(data,'$.clientRevision')=?").bind(JSON.stringify(item),item.updatedAt,id,studentId,data.baseRevision).run();if(saved.meta.changes===0)return {id,conflict:true};}
+    const related=kind==="activity"?{activity:target}:{resource:target};
+    if(data.baseRevision===undefined)await commitStudentNotification({profile,action,before:old,after:item,related,statements:[recordStatement("drafts",item)]});
+    else{trackChange("drafts",id);const statement=data.baseRevision===""?recordStatement("drafts",item,true):database().prepare("UPDATE drafts SET data=?,updated_at=? WHERE id=? AND student_id=? AND json_extract(data,'$.clientRevision')=?").bind(JSON.stringify(item),item.updatedAt,id,studentId,data.baseRevision);const [saved]=await commitStudentNotification({profile,action,before:old,after:item,related,statements:[statement]});if(saved.meta.changes===0)return {id,conflict:true};}
     return {id};
   }
   if(action==="deleteDraft"){
-    const {id}=await draftTarget(profile,data);trackChange("drafts",id);if(data.draftRevision===undefined)await deleteStatement("drafts",id).run();else await database().prepare("DELETE FROM drafts WHERE id=? AND json_extract(data,'$.clientRevision')=?").bind(id,cleanString(data.draftRevision,150)).run();return {id};
+    const {id,kind,target}=await draftTarget(profile,data),old=await get("drafts",id);trackChange("drafts",id);
+    const statement=data.draftRevision===undefined?deleteStatement("drafts",id):database().prepare("DELETE FROM drafts WHERE id=? AND json_extract(data,'$.clientRevision')=?").bind(id,cleanString(data.draftRevision,150));
+    await commitStudentNotification({profile,action,before:old,after:null,related:kind==="activity"?{activity:target}:{resource:target},statements:[statement]});return {id};
   }
   if(action==="upsertWord"){
     const old=data.id?await get("word_entries",data.id):null;
@@ -302,17 +308,18 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     if(!item.original.trim()||!item.corrected.trim())throw new HttpError(400,"Escribe la palabra original y su corrección.");if(item.reviewDate)date(item.reviewDate);
     for(const key of ["activityId","resourceId","sessionId"]){const value=data[key]===undefined?old?.[key]:data[key];if(!value)continue;const target=await required(key==="activityId"?"activities":key==="resourceId"?"resources":"sessions",value);if(!allowedContent(target,studentId))throw new HttpError(403,"El trabajo pertenece a otra alumna.");item[key]=value;}
     trackChange("word_entries",id);
-    const saved=await database().prepare("INSERT INTO word_entries (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE word_entries.student_id=?").bind(id,studentId,JSON.stringify(item),item.updatedAt,studentId).run();if(saved.meta.changes===0)throw new HttpError(403,"Esta palabra pertenece a otra alumna.");return {id};
+    const [saved]=await commitStudentNotification({profile,action,before:old,after:item,statements:[database().prepare("INSERT INTO word_entries (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE word_entries.student_id=?").bind(id,studentId,JSON.stringify(item),item.updatedAt,studentId)]});if(saved.meta.changes===0)throw new HttpError(403,"Esta palabra pertenece a otra alumna.");return {id};
   }
   if(action==="deleteWord"){
-    const old=await required("word_entries",data.id),studentId=ownStudent(profile,old.studentId);if(data.studentId!==undefined)ownStudent(profile,data.studentId);trackChange("word_entries",old.id);await database().prepare("DELETE FROM word_entries WHERE id=? AND student_id=?").bind(old.id,studentId).run();return {id:old.id};
+    const old=await required("word_entries",data.id),studentId=ownStudent(profile,old.studentId);if(data.studentId!==undefined)ownStudent(profile,data.studentId);trackChange("word_entries",old.id);await commitStudentNotification({profile,action,before:old,after:null,statements:[database().prepare("DELETE FROM word_entries WHERE id=? AND student_id=?").bind(old.id,studentId)]});return {id:old.id};
   }
   if(action==="updatePreferences"){
     const studentId=ownStudent(profile,data.studentId || profile),old=await required("students",studentId),item:RecordData={...old};
     await customizeProfile(old,item,data);
     if(data.favoriteResourceIds!==undefined)item.favoriteResourceIds=await resourceIds(data.favoriteResourceIds,studentId,50);
     const keys=["color","avatar","avatarFileId","favoriteResourceIds"].filter(key=>data[key]!==undefined);if(data.removePhoto===true)keys.push("avatar");
-    await studentPatchStatement(studentId,Object.fromEntries(keys.filter(key=>!(data.removePhoto===true&&key==="avatarFileId")).map(key=>[key,item[key]])),["avatarUrl",...(data.removePhoto===true?["avatarFileId"]:[])]).run();return {id:studentId};
+    item.updatedAt=new Date().toISOString();
+    await commitStudentNotification({profile,action,before:old,after:item,statements:[studentPatchStatement(studentId,Object.fromEntries(keys.filter(key=>!(data.removePhoto===true&&key==="avatarFileId")).map(key=>[key,item[key]])),["avatarUrl",...(data.removePhoto===true?["avatarFileId"]:[])])]});return {id:studentId};
   }
   if(action==="manageFile"){
     const old=await required("files",data.id);

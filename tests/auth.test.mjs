@@ -531,12 +531,14 @@ test('a failed atomic photo commit rolls back the reference and cleans its unlin
 });
 
 test('concurrent preference fields and profile photos preserve each other with canonical increasing versions',async()=>{
- const rocio=await login('rocio'),teacher=await login('teacher',pin);memoryBucket();await uploadAvatar(rocio.cookie);const original=D1Statement.prototype.run;let injected=false,newPhoto;
- D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE students')&&this.sql.includes("'$.color'")){injected=true;newPhoto=await (await uploadAvatar(rocio.cookie)).json();}return original.call(this);};
- try{const changed=await mutate(rocio.cookie,'updatePreferences',{color:'cyan'});assert.equal(changed.patch.students[0].avatarFileId,newPhoto.id);assert.equal(changed.patch.students[0].color,'cyan');assert.ok(changed.patch.students[0].updatedAt>newPhoto.patch.students[0].updatedAt);}finally{D1Statement.prototype.run=original;}
+ const rocio=await login('rocio'),teacher=await login('teacher',pin);memoryBucket();await uploadAvatar(rocio.cookie);const original=D1Statement.prototype.run,adapter=globalThis.__arpAuthTestEnv.DB,oldBatch=adapter.batch.bind(adapter);let injected=false,newPhoto;
+ // Insert the competing request after the preference read but before its atomic
+ // write. Awaiting it from inside a serialized test transaction would deadlock.
+ adapter.batch=async statements=>{if(!injected&&statements.some(s=>s.sql.startsWith('UPDATE students')&&s.sql.includes("'$.color'"))){injected=true;newPhoto=await (await uploadAvatar(rocio.cookie)).json();}return oldBatch(statements);};
+ try{const changed=await mutate(rocio.cookie,'updatePreferences',{color:'cyan'});assert.equal(changed.patch.students[0].avatarFileId,newPhoto.id);assert.equal(changed.patch.students[0].color,'cyan');assert.ok(changed.patch.students[0].updatedAt>newPhoto.patch.students[0].updatedAt);}finally{adapter.batch=oldBatch;}
  injected=false;D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE students')&&this.sql.includes("'$.name'")){injected=true;newPhoto=await (await uploadAvatar(rocio.cookie)).json();}return original.call(this);};
  try{const changed=await mutate(teacher.cookie,'updateStudent',{id:'rocio',name:'Rocío'});assert.equal(changed.patch.students[0].avatarFileId,newPhoto.id);assert.equal(changed.patch.students[0].color,'cyan');}finally{D1Statement.prototype.run=original;}
- const adapter=globalThis.__arpAuthTestEnv.DB,oldBatch=adapter.batch.bind(adapter);let preference;
+ let preference;
  adapter.batch=async statements=>{if(statements.some(s=>s.sql.startsWith('INSERT OR IGNORE INTO files'))){preference=await mutate(rocio.cookie,'updatePreferences',{color:'emerald'});}return oldBatch(statements);};
  const final=await (await uploadAvatar(rocio.cookie)).json();assert.equal(final.patch.students[0].color,'emerald');assert.ok(final.patch.students[0].updatedAt>preference.patch.students[0].updatedAt);
 });
