@@ -2,8 +2,11 @@
 .math-answer-field .ma-source-label{margin:0;min-width:0;line-height:1.6}
 .math-answer-field :is(input,textarea){min-width:0;max-width:100%;font-size:max(var(--arp-font-min,0px),calc(16px * var(--arp-font-scale,1)));line-height:1.6}
 .math-answer-field textarea{resize:vertical}
-.ma-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.math-answer-field .ma-toolbar>.btn,.math-answer-field .ma-builder-actions>.btn{min-height:44px;font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));line-height:1.5;white-space:normal}
+.ma-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ma-constructors{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0;max-width:100%}
+.ma-operators{display:grid;grid-template-columns:repeat(7,44px);gap:9px;max-width:100%}
+.ma-operators.ma-operators-simple{grid-template-columns:44px}
+.ma-toolbar .btn,.math-answer-field .ma-builder-actions>.btn{min-height:44px;font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));line-height:1.5;white-space:normal}
 .math-answer-field :is(.ma-minus,.ma-operator){width:44px;min-width:44px;min-height:44px;padding:8px;font-size:max(var(--arp-font-min,0px),calc(22px * var(--arp-font-scale,1)));line-height:1}
 .ma-answer-preview{min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}
 .ma-preview-label{display:block;font-size:max(var(--arp-font-min,0px),calc(12px * var(--arp-font-scale,1)));color:var(--muted);font-weight:600;margin-bottom:8px;line-height:1.6}
@@ -24,6 +27,6 @@
 .ma-builder-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:17px}
 .math-answer-field .ma-error{font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));line-height:1.7;margin:0;overflow-wrap:anywhere}
 .math-answer-field :is(button,input,textarea,.ma-preview-content,.ma-builder-preview):focus-visible{outline:3px solid var(--primary);outline-offset:3px;border-radius:6px}
-@media(max-width:600px){.ma-builder{padding:14px}.ma-builder-body{grid-template-columns:minmax(0,1fr)}.ma-builder-preview{justify-self:center;max-width:100%;padding:0 4px}.ma-builder-actions>.btn{flex:1 1 100px}.ma-toolbar>.btn{padding-inline:12px}}
-@media(max-width:480px){.ma-parts{grid-template-columns:minmax(0,1fr);gap:12px}.ma-preview-content{max-height:180px}.ma-toolbar{gap:8px}}
+@media(max-width:600px){.ma-builder{padding:14px}.ma-builder-body{grid-template-columns:minmax(0,1fr)}.ma-builder-preview{justify-self:center;max-width:100%;padding:0 4px}.ma-builder-actions>.btn{flex:1 1 100px}.ma-toolbar .btn{padding-inline:12px}.ma-operators{grid-template-columns:repeat(4,44px)}}
+@media(max-width:480px){.ma-parts{grid-template-columns:minmax(0,1fr);gap:12px}.ma-preview-content{max-height:180px}.ma-toolbar,.ma-constructors,.ma-operators{gap:8px}}
 @media(prefers-reduced-motion:no-preference){.ma-builder{animation:ma-builder-enter .16s ease-out}@keyframes ma-builder-enter{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}}

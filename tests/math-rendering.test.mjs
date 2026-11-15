@@ -23,6 +23,7 @@ registerHooks({
  }
 });
 const {default:MathText}=await import('../app/components/MathText.tsx');
+const {insertMathEntry}=await import('../lib/math-answer.ts');
 const render=(children,subject='Matemáticas')=>renderToStaticMarkup(createElement(MathText,{subject,children}));
 test('fractions render numerator and denominator with a single spoken math label',()=>{
  const html=render('5/8 de 120');
@@ -67,4 +68,34 @@ test('roots or multiplication alone trigger a readable preview without implying 
   const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Cálculo',subject:'Matemáticas',value,onChange:()=>{},multiline:true}));
   assert.match(html,/Así se verá/);assert.ok(!html.includes('Resultado automático correcto'));assert.ok(!html.includes('aria-live'));
  }
+});
+
+test('expression-only symbol controls are accessible non-submit buttons and respect subject and answer mode',async()=>{
+ const {default:MathAnswerField}=await import('../app/components/MathAnswerField.tsx');
+ const labels=['Insertar paréntesis de apertura','Insertar paréntesis de cierre','Insertar signo de suma','Insertar signo igual'];
+ const field=(subject,allowExpressions)=>renderToStaticMarkup(createElement(MathAnswerField,{label:'Procedimiento',subject,value:'2 + 3',onChange:()=>{},allowExpressions}));
+ for(const subject of ['Matemáticas','Física y química']){
+  const html=field(subject,true);
+  for(const label of labels)assert.match(html,new RegExp(`<button(?=[^>]*type="button")(?=[^>]*aria-label="${label}")[^>]*>`),`${subject}: ${label}`);
+  for(const label of labels)assert.ok(!field(subject,false).includes(`aria-label="${label}"`),`${subject} numeric: ${label}`);
+ }
+ for(const label of labels)assert.ok(!field('Lengua',true).includes(`aria-label="${label}"`),`Lengua: ${label}`);
+});
+
+test('a calculation built through selection and cursor insertions retains its source and gains a plain mathematical preview',async()=>{
+ const {default:MathAnswerField}=await import('../app/components/MathAnswerField.tsx');
+ let state=insertMathEntry('2?3',1,2,' + ',11);
+ state=insertMathEntry(state.value,0,0,'(',11);
+ state=insertMathEntry(state.value,state.value.length,state.value.length,')',11);
+ state=insertMathEntry(state.value,state.start,state.end,' = ',11);
+ state=insertMathEntry(state.value,state.start,state.end,'5',11);
+ assert.equal(state.value,'(2 + 3) = 5');assert.equal(state.start,11);
+ const stored=JSON.parse(JSON.stringify({answer:state.value}));
+ const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Procedimiento',subject:'Matemáticas',value:stored.answer,onChange:()=>{},multiline:true,allowExpressions:true}));
+ assert.match(html,/<textarea[^>]*>\(2 \+ 3\) = 5<\/textarea>/);
+ assert.match(html,/Así se verá/);
+ assert.match(html,/class="ma-preview-content"[^>]*>\(2 \+ 3\) = 5<\/div>/);
+ assert.ok(!html.includes('role="math"')); // Symbols remain ordinary notation, never a computed result.
+ const hidden=renderToStaticMarkup(createElement(MathAnswerField,{label:'Redacción',subject:'Lengua',value:stored.answer,onChange:()=>{},multiline:true,allowExpressions:true}));
+ assert.match(hidden,/<textarea[^>]*>\(2 \+ 3\) = 5<\/textarea>/);assert.ok(!hidden.includes('Así se verá'));
 });

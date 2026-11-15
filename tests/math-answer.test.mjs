@@ -78,6 +78,33 @@ test('multiplication and division signs insert literally at the cursor or replac
   assert.deepEqual(insertMathEntry('Resultado: x.',11,12,buildMathEntry('root','49').text,100),{value:'Resultado: √49.',start:14,end:14,inserted:true});
 });
 
+test('parentheses insert without padding while addition and equality retain their surrounding spaces',()=>{
+  const original='Antes x después',start=original.indexOf('x');
+  for(const [symbol,expected]of [['(','Antes ( después'],[')','Antes ) después'],[' + ','Antes  +  después'],[' = ','Antes  =  después']]){
+    const result=insertMathEntry(original,start,start+1,symbol,100);
+    assert.deepEqual(result,{value:expected,start:start+symbol.length,end:start+symbol.length,inserted:true});
+    assert.equal(JSON.parse(JSON.stringify({answer:result.value})).answer,expected);
+    assert.deepEqual(insertMathEntry(original,start,start,symbol,original.length),{value:original,start,end:start,inserted:false});
+    const atLimit=insertMathEntry(original,start,start,symbol,original.length+symbol.length);
+    assert.equal(atLimit.inserted,true);assert.equal(atLimit.value.length,original.length+symbol.length);
+    assert.equal(atLimit.value.slice(0,start),'Antes ');assert.equal(atLimit.value.slice(atLimit.end),'x después');
+  }
+});
+
+test('successive symbol insertions preserve the full calculation and caret without evaluating it',()=>{
+  let state=insertMathEntry('2?3',1,2,' + ',11);
+  assert.deepEqual(state,{value:'2 + 3',start:4,end:4,inserted:true});
+  state=insertMathEntry(state.value,0,0,'(',11);
+  assert.deepEqual(state,{value:'(2 + 3',start:1,end:1,inserted:true});
+  state=insertMathEntry(state.value,state.value.length,state.value.length,')',11);
+  assert.deepEqual(state,{value:'(2 + 3)',start:7,end:7,inserted:true});
+  state=insertMathEntry(state.value,state.start,state.end,' = ',11);
+  assert.deepEqual(state,{value:'(2 + 3) = ',start:10,end:10,inserted:true});
+  state=insertMathEntry(state.value,state.start,state.end,'5',11);
+  assert.deepEqual(state,{value:'(2 + 3) = 5',start:11,end:11,inserted:true});
+  assert.deepEqual(insertMathEntry(state.value,state.start,state.end,' + ',11),{...state,inserted:false});
+});
+
 test('unknown selections append; finite offsets are safely clamped and ordered',()=>{
   for(const [start,end]of [[null,null],[1,null],[null,2],[NaN,1],[1,Infinity]])assert.deepEqual(insertMathEntry('A',start,end,'3/4',4),{value:'A3/4',start:4,end:4,inserted:true});
   assert.deepEqual(insertMathEntry('abc',-10,100,'2/3',3),{value:'2/3',start:3,end:3,inserted:true});

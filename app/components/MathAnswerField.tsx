@@ -19,6 +19,15 @@ type Props = {
 };
 type Selection = { start: number | null; end: number | null };
 const wholeInteger = /^[+\-−]?\d{1,12}$/;
+const mathSymbols = [
+  { symbol: "(", entry: "(", label: "Insertar paréntesis de apertura" },
+  { symbol: ")", entry: ")", label: "Insertar paréntesis de cierre" },
+  { symbol: "+", entry: " + ", label: "Insertar signo de suma" },
+  { symbol: "−", entry: "-", label: "Insertar signo menos" },
+  { symbol: "×", entry: " × ", label: "Insertar signo de multiplicación" },
+  { symbol: "÷", entry: " ÷ ", label: "Insertar signo de división" },
+  { symbol: "=", entry: " = ", label: "Insertar signo igual" },
+];
 
 /** The editable and submitted value always remains ordinary text. */
 export default function MathAnswerField({ label, value, onChange, subject, multiline = false, rows = 4, maxLength = multiline ? 20000 : 1000, allowExpressions = true, inputMode }: Props) {
@@ -26,7 +35,7 @@ export default function MathAnswerField({ label, value, onChange, subject, multi
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null), firstField = useRef<HTMLInputElement>(null), secondField = useRef<HTMLInputElement>(null);
   const selection = useRef<Selection>({ start: null, end: null });
   const [kind, setKind] = useState<MathEntryKind | null>(null), [first, setFirst] = useState(""), [second, setSecond] = useState(""), [error, setError] = useState("");
-  const showPreview = useMemo(() => mathematical && (/[√×÷]/.test(value) || /[\/^²³⁰¹⁴⁵⁶⁷⁸⁹]/.test(value) && tokenizeMathText(value).some(token => token.type !== "text")), [mathematical, value]);
+  const showPreview = useMemo(() => mathematical && (/[√×÷()+=]/.test(value) || /[\/^²³⁰¹⁴⁵⁶⁷⁸⁹]/.test(value) && tokenizeMathText(value).some(token => token.type !== "text")), [mathematical, value]);
   const entry = kind ? buildMathEntry(kind, first, kind === "root" ? "" : second) : null;
   const partNames = kind === "root" ? ["Número de la raíz"] : kind === "power" ? ["Base", "Exponente"] : ["Numerador", "Denominador"];
   const signNames = kind === "power" ? ["de la base", "del exponente"] : ["del numerador", "del denominador"];
@@ -87,10 +96,13 @@ export default function MathAnswerField({ label, value, onChange, subject, multi
     {mathematical && <>
       {showPreview && <div className="ma-answer-preview" role="group" aria-labelledby={`${id}-preview-title`}><span id={`${id}-preview-title`} className="ma-preview-label">Así se verá</span><div className="ma-preview-content" tabIndex={0}><MathText subject={subject}>{value}</MathText></div></div>}
       <div className="ma-toolbar" role="group" aria-label={`Insertar en: ${label}`}>
+        <div className="ma-constructors">
         <button type="button" className="btn secondary" aria-expanded={kind === "fraction"} aria-controls={kind === "fraction" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("fraction")}>Fracción</button>
         {allowExpressions && <><button type="button" className="btn secondary" aria-expanded={kind === "power"} aria-controls={kind === "power" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("power")}>Potencia</button><button type="button" className="btn secondary" aria-expanded={kind === "root"} aria-controls={kind === "root" ? `${id}-builder` : undefined} onPointerDown={preserveMainFocus} onClick={() => openBuilder("root")}>Raíz</button></>}
-        <button type="button" className="btn secondary ma-minus" aria-label="Insertar signo menos" onPointerDown={preserveMainFocus} onClick={() => insert("-")}>−</button>
-        {allowExpressions && <><button type="button" className="btn secondary ma-operator" aria-label="Insertar signo de multiplicación" onPointerDown={preserveMainFocus} onClick={() => insert(" × ")}>×</button><button type="button" className="btn secondary ma-operator" aria-label="Insertar signo de división" onPointerDown={preserveMainFocus} onClick={() => insert(" ÷ ")}>÷</button></>}
+        </div>
+        <div className={`ma-operators${allowExpressions ? "" : " ma-operators-simple"}`}>
+          {mathSymbols.filter(item => allowExpressions || item.entry === "-").map(item => <button key={item.symbol} type="button" className="btn secondary ma-operator" aria-label={item.label} onPointerDown={preserveMainFocus} onClick={() => insert(item.entry)}>{item.symbol}</button>)}
+        </div>
       </div>
       {kind && <div id={`${id}-builder`} className="ma-builder" role="group" aria-labelledby={`${id}-builder-title`} onKeyDown={event => {
         if (event.key === "Enter" && event.target instanceof HTMLInputElement && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); insertBuilt(); }
