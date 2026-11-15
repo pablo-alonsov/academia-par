@@ -241,3 +241,12 @@ Verificación local: 160/160 pruebas automatizadas y TypeScript sin errores. Rec
 Límite de la verificación: los tamaños son emulados en Chromium. No se dispone aquí de Safari/Chrome en un iPhone físico, teclado virtual de iOS ni un iPad real; no se afirma certificación nativa de esos dispositivos. La corrección elimina la secuencia de cierre por pérdida de foco que encaja con el fallo comunicado.
 
 Se renombró el mismo proyecto de Sites a https://academia-par.movingflair1.chatgpt.site. El enlace anterior devuelve una redirección 307 al nuevo y el nuevo responde 200 sin exigir ChatGPT. D1/R2 no se migran ni se sustituyen. Cookies y almacenamiento local dependen del origen: hay que volver a seleccionar perfil; las copias sin sincronizar que solo estén en el origen anterior no se trasladan automáticamente.
+
+
+## Tipografía general en móvil y tableta · 15 de noviembre de 2026
+
+La tipografía usa una escala común: +16 % hasta 600 px y +12 % hasta 1100 px, también en pantallas táctiles de hasta 1400 px para incluir tabletas grandes en horizontal. Los textos secundarios tienen un mínimo de 13 px en esos tamaños. En escritorio amplio con ratón la escala sigue en 1, sin mínimo añadido: se conservan los valores anteriores. Marca gráfica e iniciales de avatares mantienen sus tamaños para respetar sus cajas. Los clamp se escalan completos y el aumento afecta solo a las fuentes, sin zoom de la página ni cambios en los datos.
+
+Se verificaron las 420 declaraciones de font-size modificadas y se comprobó que las demás declaraciones existentes permanecen iguales. En el navegador integrado, el cuerpo mide 16,24 px a 360/390 px, 15,68 px a 768/1024/1100 px y los 14 px originales a 1101/1440 px. Los campos móviles de examen y filtros miden 18,56 px; en la tableta de 1024 px, 17,92 px.
+
+Recorridos locales: panel docente y selector de perfiles, calendario y formulario Nuevo examen a 390/360 px y 1024 px, Inicio de Alejandra a 768 px, consigna/respuesta/autoevaluación y filtros de Practicar a 390 px, ambos temas. No se guardaron formularios ni respuestas de prueba. Sin desbordamiento horizontal del documento en los tamaños comprobados; las autoevaluaciones conservan 48 px de alto y el diálogo conserva su desplazamiento vertical. La revisión se realiza con tamaños emulados de Chromium, sin atribuirla a un iPhone/iPad físico.

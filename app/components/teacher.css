@@ -50,9 +50,9 @@
 .teacher-views .bank-card>.row:first-child{flex-wrap:wrap;gap:8px;align-items:flex-start}
 .teacher-views .bank-card>.row:first-child>.small{margin-left:auto;white-space:nowrap}
 .teacher-views .bank-meta{flex-wrap:wrap;gap:4px 10px;line-height:1.65}
-.teacher-views .teacher-support-badge{font-size:12px;white-space:normal;line-height:1.5}
+.teacher-views .teacher-support-badge{font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));white-space:normal;line-height:1.5}
 .teacher-dialog .teacher-assignment-support{margin:12px 0}
-.teacher-dialog .teacher-home-support-warning{border-left:3px solid var(--amber);background:var(--surface2);padding:12px 14px;margin:0 0 18px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.teacher-dialog .teacher-home-support-warning{border-left:3px solid var(--amber);background:var(--surface2);padding:12px 14px;margin:0 0 18px;font-size:max(var(--arp-font-min, 0px), calc(14px * var(--arp-font-scale, 1)));line-height:1.6;overflow-wrap:anywhere}
 .teacher-views .bank-bottom{flex-wrap:wrap;gap:8px 10px;align-items:center}
 .teacher-views .bank-bottom>.row{margin-left:auto;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 .teacher-views .bank-bottom .btn{min-height:44px}
@@ -85,17 +85,17 @@
 .teacher-pupil-summary{min-width:0;border-top:3px solid #8b76bc}
 .teacher-pupil-summary.pupil-alejandra{border-top-color:#298575}
 .teacher-pupil-summary .card-head{margin-bottom:12px}
-.teacher-next-objective{font-size:15px;font-weight:600;line-height:1.65}
+.teacher-next-objective{font-size:max(var(--arp-font-min, 0px), calc(15px * var(--arp-font-scale, 1)));font-weight:600;line-height:1.65}
 .teacher-pupil-facts{margin:18px 0;display:grid;gap:12px}
-.teacher-pupil-facts dt{font-size:11px;font-weight:650;color:var(--muted);margin-bottom:3px}
-.teacher-pupil-facts dd{margin:0;font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+.teacher-pupil-facts dt{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));font-weight:650;color:var(--muted);margin-bottom:3px}
+.teacher-pupil-facts dd{margin:0;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));line-height:1.65;overflow-wrap:anywhere}
 .teacher-pupil-actions{margin-top:20px}
 .teacher-organize{justify-content:flex-end;margin:0 0 12px}
 .teacher-queue-filters,.teacher-picker-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
-.teacher-review-counts{font-size:11px;color:var(--muted);gap:6px 17px;margin-bottom:8px}
+.teacher-review-counts{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));color:var(--muted);gap:6px 17px;margin-bottom:8px}
 .teacher-review-queue>.list-item{margin-top:12px}
-.teacher-review-queue .list-item .badge{font-size:10px;margin-top:5px}
-.teacher-save-state{padding:8px 11px;border:1px solid var(--line);border-radius:9px;font-weight:650;font-size:12px}
+.teacher-review-queue .list-item .badge{font-size:max(var(--arp-font-min, 0px), calc(10px * var(--arp-font-scale, 1)));margin-top:5px}
+.teacher-save-state{padding:8px 11px;border:1px solid var(--line);border-radius:9px;font-weight:650;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
 .teacher-save-state.saved{color:var(--green);background:color-mix(in srgb,var(--green) 7%,var(--surface))}
 .teacher-save-state.dirty{color:var(--amber);background:color-mix(in srgb,var(--amber) 7%,var(--surface))}
 .teacher-save-state.saving{color:var(--primary);background:var(--primary-soft)}
@@ -104,29 +104,29 @@
 .teacher-saving-icon{animation:teacher-save-spin 1s linear infinite}
 @keyframes teacher-save-spin{to{transform:rotate(360deg)}}
 .teacher-draft-recovery{border-color:var(--amber);margin-bottom:20px;background:color-mix(in srgb,var(--amber) 6%,var(--surface))}
-.teacher-draft-recovery h2{font-size:19px}
+.teacher-draft-recovery h2{font-size:max(var(--arp-font-min, 0px), calc(19px * var(--arp-font-scale, 1)))}
 .teacher-draft-recovery>.row{margin-top:17px}
-.teacher-recovery-warning{border-left:3px solid var(--amber);padding:8px 12px;font-size:12px;line-height:1.7}
-.teacher-close-draft-note{border-left:3px solid var(--primary);padding:9px 12px;margin-top:14px;font-size:14px;line-height:1.65;color:var(--muted)}
+.teacher-recovery-warning{border-left:3px solid var(--amber);padding:8px 12px;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));line-height:1.7}
+.teacher-close-draft-note{border-left:3px solid var(--primary);padding:9px 12px;margin-top:14px;font-size:max(var(--arp-font-min, 0px), calc(14px * var(--arp-font-scale, 1)));line-height:1.65;color:var(--muted)}
 .teacher-activity-picker{min-width:0;border:1px solid var(--line);border-radius:12px;padding:15px;background:var(--bg);margin-bottom:17px}
-.teacher-activity-picker .teacher-picker-filters .field{font-size:11px}
+.teacher-activity-picker .teacher-picker-filters .field{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)))}
 .teacher-activity-picker>.field{margin-bottom:4px}
 .teacher-picker-filters .field:first-child{grid-column:1/-1}
 .teacher-file-row{padding:15px 0;border-top:1px solid var(--line);min-width:0}
 .teacher-file-row>.row+.row{margin-top:12px;gap:7px}
 .teacher-file-row a{display:inline-flex;align-items:center;gap:7px;min-height:44px;max-width:100%;text-decoration:underline;text-underline-offset:3px}
-.teacher-file-row .btn{font-size:11px;min-height:44px}
+.teacher-file-row .btn{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));min-height:44px}
 .teacher-file-replace{position:relative;overflow:hidden;cursor:pointer}
 .teacher-file-replace input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .teacher-file-replace:focus-within{outline:3px solid var(--primary);outline-offset:3px}
 .teacher-resource-pins{border:1px solid var(--line);border-radius:12px;padding:12px 15px;margin:20px 0;max-height:320px;overflow:auto}
 .teacher-resource-pins legend{font-weight:650;padding:0 5px}
-.teacher-resource-pins label{font-size:12px}
+.teacher-resource-pins label{font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
 .teacher-copy-skill{border:1px solid var(--line);border-radius:10px;padding:0 13px;margin:17px 0}
 .teacher-copy-skill>.btn{margin-bottom:15px}
 .teacher-procedure{margin:15px 0;display:grid;gap:13px;border-left:3px solid var(--primary);padding-left:14px}
-.teacher-procedure dt{font-weight:650;font-size:12px}
-.teacher-procedure dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.teacher-procedure dt{font-weight:650;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
+.teacher-procedure dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)))}
 
 @media(min-width:1280px){
   .teacher-views .session-item{grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
@@ -146,8 +146,8 @@
   .teacher-views .teacher-search{flex-basis:100%}
   .teacher-views .filters>select{flex:1 1 140px}
   .teacher-views .page-heading>.btn{width:100%}
-  .teacher-views :where(input,select,textarea){font-size:16px}
-  .teacher-views input[type=file]{font-size:12px;padding:8px;line-height:1.6}
+  .teacher-views :where(input,select,textarea){font-size:max(var(--arp-font-min, 0px), calc(16px * var(--arp-font-scale, 1)))}
+  .teacher-views input[type=file]{font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));padding:8px;line-height:1.6}
   .teacher-dialog form>.row:last-child>.btn,.teacher-dialog fieldset>.row:last-child>.btn{flex:1 1 160px}
   .teacher-views .page-heading>.row.wrap>.btn{flex:1 1 140px}
   .teacher-views .page-heading>.row.wrap>.save-state{flex-basis:100%}
@@ -179,4 +179,4 @@
 @media(prefers-reduced-motion:reduce){.teacher-saving-icon{animation:none}}
 
 /* PDF resources stay reusable; creating and assigning are separate explicit steps. */
-.teacher-resource-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;min-width:0}.teacher-resource-actions>.btn{white-space:normal;min-height:44px;line-height:1.5}.teacher-pdf-workflow-note{border-top:1px solid var(--line);padding-top:12px;font-size:12px!important;line-height:1.7;overflow-wrap:anywhere}.teacher-linked-resource{display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;padding:16px 18px;background:var(--surface2);margin-top:6px}.teacher-linked-resource>div{min-width:0}.teacher-linked-resource h3{font-size:15px;line-height:1.5;letter-spacing:0;margin:7px 0}.teacher-linked-resource p{font-size:13px;line-height:1.7;color:var(--muted);margin:0}.teacher-linked-resource>.btn{min-height:44px;flex-shrink:0;white-space:normal}.teacher-pdf-workflow{padding:16px 18px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);margin-top:18px}.teacher-pdf-workflow h3{font-size:14px;letter-spacing:0;margin-bottom:9px}.teacher-pdf-workflow ol{list-style:decimal;padding-left:21px;margin:10px 0;font-size:13px;line-height:1.8}.teacher-pdf-workflow li{padding-left:3px;margin-bottom:5px}.teacher-pdf-workflow>p{font-size:13px;line-height:1.8;overflow-wrap:anywhere}@media(max-width:600px){.teacher-linked-resource{align-items:stretch;flex-direction:column;padding:15px}.teacher-linked-resource>.btn{width:100%}.teacher-resource-actions{justify-content:flex-start}.teacher-resource-actions>.btn{flex:1 1 auto}.teacher-pdf-workflow{padding:15px}}
+.teacher-resource-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;min-width:0}.teacher-resource-actions>.btn{white-space:normal;min-height:44px;line-height:1.5}.teacher-pdf-workflow-note{border-top:1px solid var(--line);padding-top:12px;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))!important;line-height:1.7;overflow-wrap:anywhere}.teacher-linked-resource{display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;padding:16px 18px;background:var(--surface2);margin-top:6px}.teacher-linked-resource>div{min-width:0}.teacher-linked-resource h3{font-size:max(var(--arp-font-min, 0px), calc(15px * var(--arp-font-scale, 1)));line-height:1.5;letter-spacing:0;margin:7px 0}.teacher-linked-resource p{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.7;color:var(--muted);margin:0}.teacher-linked-resource>.btn{min-height:44px;flex-shrink:0;white-space:normal}.teacher-pdf-workflow{padding:16px 18px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);margin-top:18px}.teacher-pdf-workflow h3{font-size:max(var(--arp-font-min, 0px), calc(14px * var(--arp-font-scale, 1)));letter-spacing:0;margin-bottom:9px}.teacher-pdf-workflow ol{list-style:decimal;padding-left:21px;margin:10px 0;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.8}.teacher-pdf-workflow li{padding-left:3px;margin-bottom:5px}.teacher-pdf-workflow>p{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.8;overflow-wrap:anywhere}@media(max-width:600px){.teacher-linked-resource{align-items:stretch;flex-direction:column;padding:15px}.teacher-linked-resource>.btn{width:100%}.teacher-resource-actions{justify-content:flex-start}.teacher-resource-actions>.btn{flex:1 1 auto}.teacher-pdf-workflow{padding:15px}}

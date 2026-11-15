@@ -12,7 +12,7 @@
   min-height: 44px;
   padding-block: 11px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));
   font-weight: 600;
   line-height: 1.6;
   color: var(--primary);

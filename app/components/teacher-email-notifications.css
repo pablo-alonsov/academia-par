@@ -2,43 +2,43 @@
 .ten-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .ten-title{display:flex;align-items:center;gap:9px;min-width:0}
 .ten-title>svg{color:var(--primary);flex-shrink:0}
-.ten-title h2{font-size:18px;line-height:1.5;letter-spacing:-.3px;margin:0}
-.ten-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 9px;border-radius:7px;background:var(--surface2);color:var(--amber);line-height:1.6}
+.ten-title h2{font-size:max(var(--arp-font-min, 0px), calc(18px * var(--arp-font-scale, 1)));line-height:1.5;letter-spacing:-.3px;margin:0}
+.ten-state{display:inline-flex;align-items:center;gap:6px;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));font-weight:600;padding:5px 9px;border-radius:7px;background:var(--surface2);color:var(--amber);line-height:1.6}
 .ten-state.active{color:var(--green)}
-.ten-recipient{font-size:13px;line-height:1.75;margin:13px 0 0;color:var(--muted);overflow-wrap:anywhere}
+.ten-recipient{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.75;margin:13px 0 0;color:var(--muted);overflow-wrap:anywhere}
 .ten-recipient strong{color:var(--text);font-weight:600}
-.ten-counts{display:flex;align-items:center;gap:10px 19px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted)}
+.ten-counts{display:flex;align-items:center;gap:10px 19px;flex-wrap:wrap;margin-top:14px;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));color:var(--muted)}
 .ten-counts>span{display:inline-flex;align-items:center;gap:5px;line-height:1.8}
 .ten-counts .has-errors{color:var(--amber)}
 .ten-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:16px}
-.ten-actions>.btn{min-height:44px;white-space:normal;line-height:1.6;font-size:13px}
-.teacher-email-notifications .ten-message{margin:13px 0 0;font-size:13px;line-height:1.8;overflow-wrap:anywhere}
-.ten-offline{font-size:13px;color:var(--amber);margin:13px 0 0;line-height:1.7}
-.ten-checked{font-size:11px;line-height:1.8;color:var(--muted);margin:10px 0 0}
+.ten-actions>.btn{min-height:44px;white-space:normal;line-height:1.6;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)))}
+.teacher-email-notifications .ten-message{margin:13px 0 0;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.8;overflow-wrap:anywhere}
+.ten-offline{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));color:var(--amber);margin:13px 0 0;line-height:1.7}
+.ten-checked{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));line-height:1.8;color:var(--muted);margin:10px 0 0}
 .ten-details{border-top:1px solid var(--line);margin-top:15px;min-width:0}
-.ten-details>summary{cursor:pointer;font-size:13px;font-weight:600;min-height:44px;padding:12px 0;line-height:1.7;color:var(--primary)}
+.ten-details>summary{cursor:pointer;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));font-weight:600;min-height:44px;padding:12px 0;line-height:1.7;color:var(--primary)}
 .ten-list{list-style:none;padding:0;margin:0}
 .ten-list>li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px 14px;padding:13px 0;border-top:1px solid var(--line);min-width:0}
 .ten-list>li:first-child{border-top:0;padding-top:4px}
-.ten-notification-main{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:13px;line-height:1.65;overflow-wrap:anywhere}
-.ten-notification-main strong{font-size:13px;font-weight:650}
-.ten-notification-main small{font-size:11px;color:var(--muted)}
-.ten-notification-status{font-size:11px;line-height:1.6;font-weight:600;border-radius:6px;padding:4px 8px;background:var(--surface2);color:var(--amber);max-width:100%;overflow-wrap:anywhere}
+.ten-notification-main{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.65;overflow-wrap:anywhere}
+.ten-notification-main strong{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));font-weight:650}
+.ten-notification-main small{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));color:var(--muted)}
+.ten-notification-status{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));line-height:1.6;font-weight:600;border-radius:6px;padding:4px 8px;background:var(--surface2);color:var(--amber);max-width:100%;overflow-wrap:anywhere}
 .ten-notification-status.accepted{color:var(--green)}
 .ten-notification-status.failed{color:var(--amber);border:1px solid var(--line)}
-.ten-notification-detail,.ten-notification-error{grid-column:1/-1;font-size:12px;line-height:1.8;margin:0;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
+.ten-notification-detail,.ten-notification-error{grid-column:1/-1;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));line-height:1.8;margin:0;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
 .ten-notification-error{color:var(--amber)}
-.ten-empty,.ten-service-note{font-size:12px;line-height:1.8;color:var(--muted);margin:5px 0 12px}
+.ten-empty,.ten-service-note{font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));line-height:1.8;color:var(--muted);margin:5px 0 12px}
 .ten-service-note{margin-top:12px}
-.ten-configuration{font-size:13px;line-height:1.8;padding:2px 0 6px;min-width:0;overflow-wrap:anywhere}
+.ten-configuration{font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));line-height:1.8;padding:2px 0 6px;min-width:0;overflow-wrap:anywhere}
 .ten-configuration dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin:0 0 14px}
-.ten-configuration dt{font-size:11px;color:var(--muted);margin-bottom:3px}
-.ten-configuration dd{margin:0;font-size:13px;overflow-wrap:anywhere}
+.ten-configuration dt{font-size:max(var(--arp-font-min, 0px), calc(11px * var(--arp-font-scale, 1)));color:var(--muted);margin-bottom:3px}
+.ten-configuration dd{margin:0;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)));overflow-wrap:anywhere}
 .ten-configuration ol{list-style:decimal;padding-left:20px;margin:12px 0}
 .ten-configuration li{padding-left:3px;margin-bottom:8px}
 .ten-configuration a{display:inline;overflow-wrap:anywhere}
 .ten-configuration a>svg{display:inline-block;vertical-align:baseline;margin-left:4px}
-.ten-configuration code{font-size:12px;overflow-wrap:anywhere;white-space:normal;background:var(--surface2);border-radius:4px;padding:2px 4px}
+.ten-configuration code{font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)));overflow-wrap:anywhere;white-space:normal;background:var(--surface2);border-radius:4px;padding:2px 4px}
 .teacher-email-notifications :is(button,a,summary):focus-visible{outline:3px solid var(--primary);outline-offset:3px;border-radius:5px}
-@media(max-width:600px){.teacher-email-notifications{padding:19px}.ten-heading{align-items:flex-start;flex-direction:column;gap:9px}.ten-title h2{font-size:17px}.ten-actions{align-items:stretch}.ten-actions>.btn{flex:1 1 150px}.ten-actions>.btn:first-child{flex-basis:100%;justify-content:flex-start}.ten-list>li{grid-template-columns:minmax(0,1fr)}.ten-notification-status{justify-self:start}.ten-configuration dl{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.teacher-email-notifications{padding:19px}.ten-heading{align-items:flex-start;flex-direction:column;gap:9px}.ten-title h2{font-size:max(var(--arp-font-min, 0px), calc(17px * var(--arp-font-scale, 1)))}.ten-actions{align-items:stretch}.ten-actions>.btn{flex:1 1 150px}.ten-actions>.btn:first-child{flex-basis:100%;justify-content:flex-start}.ten-list>li{grid-template-columns:minmax(0,1fr)}.ten-notification-status{justify-self:start}.ten-configuration dl{grid-template-columns:minmax(0,1fr)}}
 @media(prefers-reduced-motion:no-preference){.ten-spinner{animation:ten-spin 1s linear infinite}@keyframes ten-spin{to{transform:rotate(360deg)}}}
