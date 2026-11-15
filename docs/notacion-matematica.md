@@ -14,3 +14,13 @@ La actualización del banco utiliza la reconciliación existente: conserva los i
 - Revisión visual local a 360, 390, 768 y 1440 px, con ambos perfiles y temas claro y oscuro. Títulos, tarjetas y consignas sin desbordamiento horizontal; fracciones, potencias, raíces y casillas legibles. Sin errores en la consola del navegador de revisión.
 - Corrección de fracciones equivalentes, separación de permisos, borradores y conservación de personalizaciones cubiertas por las pruebas existentes.
 - La revisión responsive utiliza un navegador de escritorio con tamaños de pantalla definidos; no sustituye una comprobación en dispositivos iOS o Android físicos.
+
+## Entrada de respuestas
+
+`MathAnswerField` añade un constructor de fracciones y potencias al texto editable, sin cambiar el formato persistido. La alumna completa numerador y denominador, o base y exponente, y pulsa Insertar. El botón de signo permite escribir negativos con teclados móviles. El constructor sustituye la selección actual o inserta en el cursor; Cancelar y Escape conservan el texto anterior. Enter dentro del constructor inserta la expresión y no envía el formulario.
+
+La vista «Así se verá» presenta la respuesta con la misma notación que los ejercicios. No calcula ni evalúa lo escrito. También se formatean las respuestas entregadas y las copias de borradores según la asignatura del material del que proceden.
+
+Las potencias se ofrecen en respuestas abiertas y procedimientos. Las respuestas numéricas y de fracciones mantienen el objetivo de obtener el resultado final: escribir `2^3` no cuenta como resolver cuánto vale. La plantilla de procedimiento está disponible para ambas alumnas en materias matemáticas y continúa siendo opcional. Los campos de Lengua conservan las tildes y la edición habitual.
+
+Validación: 226 pruebas automáticas correctas y TypeScript sin errores. Prueba visual a 360, 390, 768 y 1440 px, en claro y oscuro: controles de al menos 44 px, campos móviles de más de 16 px, constructor sin desbordamientos y lectura clara de la notación. Se comprobaron selección, signos, validación del denominador cero, Enter, Escape y Cancelar. En una copia local se guardó y recuperó `6/8` tras recargar, se entregó como equivalente a `3/4` y se conservó `2^3` en el procedimiento de otra entrega. Ambas quedaron pendientes de revisión y ninguna habilidad se marcó como aprendida. La base local se restauró exactamente después de la prueba; estas entregas no se publican.

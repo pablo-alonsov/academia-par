@@ -1,16 +1,14 @@
 import { Fragment } from "react";
 import { tokenizeMathText } from "@/lib/math-notation";
+import { isMathSubject } from "@/lib/math-answer";
 import "./math-text.css";
 
 type Props = { children?: string | number | null; subject?: string };
-function mathematicalSubject(subject?: string) {
-  return /^(matematicas|fisica y quimica)(?:\b|$)/.test((subject || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
-}
 
 /** Presentation only. Saved answers, grading and the editable source stay plain text. */
 export default function MathText({ children, subject }: Props) {
   const text = children == null ? "" : String(children);
-  if (!text || !mathematicalSubject(subject)) return <>{text}</>;
+  if (!text || !isMathSubject(subject)) return <>{text}</>;
   const tokens = tokenizeMathText(text);
   if (tokens.every(token => token.type === "text")) return <>{text}</>;
   return <span className="math-text">{tokens.map((token,index) => {

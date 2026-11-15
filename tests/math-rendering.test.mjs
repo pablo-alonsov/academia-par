@@ -12,7 +12,8 @@ registerHooks({
   if(specifier.endsWith('.css'))return {url:'data:text/javascript,export default {};',shortCircuit:true};
   if(specifier.startsWith('@/'))return next(new URL(specifier.slice(2)+'.ts',root).href,context);
   if(specifier.startsWith('.')&&context.parentURL?.startsWith(root.href)){
-   const url=new URL(specifier,context.parentURL);if(!url.pathname.endsWith('.ts')&&existsSync(fileURLToPath(url)+'.ts'))return next(url.href+'.ts',context);
+   const url=new URL(specifier,context.parentURL);
+   for(const extension of ['.ts','.tsx'])if(!/\.tsx?$/.test(url.pathname)&&existsSync(fileURLToPath(url)+extension))return next(url.href+extension,context);
   }
   return next(specifier,context);
  },
@@ -45,4 +46,16 @@ test('teacher or pupil text is escaped rather than treated as HTML or executable
  const html=render('<script>alert(1)</script> 2^3 & 3/4');
  assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
  assert.ok(html.includes('&amp;'));assert.ok(html.includes('<sup>3</sup>'));
+});
+
+test('math answer fields preserve the editable source and preview the same stored answer',async()=>{
+ const {default:MathAnswerField}=await import('../app/components/MathAnswerField.tsx');
+ const html=renderToStaticMarkup(createElement(MathAnswerField,{label:'Respuesta',subject:'Matemáticas',value:'3/4 y 2^3',onChange:()=>{},multiline:true,allowPowers:true}));
+ assert.match(html,/<textarea[^>]*>3\/4 y 2\^3<\/textarea>/);
+ assert.match(html,/math-fraction/);assert.match(html,/<sup>3<\/sup>/);
+ assert.match(html,/Fracción/);assert.match(html,/Potencia/);
+ const plain=renderToStaticMarkup(createElement(MathAnswerField,{label:'Respuesta',subject:'Lengua',value:'Rocío',onChange:()=>{}}));
+ assert.ok(plain.includes('Rocío'));assert.ok(!plain.includes('math-fraction'));assert.ok(!plain.includes('Potencia'));assert.ok(!plain.includes('Fracción'));
+ const numeric=renderToStaticMarkup(createElement(MathAnswerField,{label:'Resultado',subject:'Matemáticas',value:'6/8',onChange:()=>{},allowPowers:false}));
+ assert.match(numeric,/Fracción/);assert.ok(!numeric.includes('Potencia'));assert.ok(numeric.includes('value="6/8"'));
 });
