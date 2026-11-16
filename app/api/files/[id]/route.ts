@@ -7,6 +7,7 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
     const profile=await requireProfile(request),{id}=await context.params;
     const file=await required("files",id);
     if(file.purpose==="avatar")throw new HttpError(404,"Este archivo no está disponible como material.");
+    if(file.purpose==="solution"&&profile!=="teacher")throw new HttpError(403,"Este archivo solo está disponible en el panel docente.");
     if(profile!=="teacher" && (file.studentId!==profile || file.shared!==true || file.detached===true))throw new HttpError(403,"No tienes acceso a este archivo.");
     if(!env.BUCKET)throw new HttpError(503,"El almacenamiento no está disponible.");
     const object=await env.BUCKET.get(file.key);if(!object)throw new HttpError(404,"El archivo no está disponible.");
@@ -29,6 +30,7 @@ export async function DELETE(request:Request,context:{params:Promise<{id:string}
     sameOrigin(request);teacherOnly(await requireProfile(request));const {id}=await context.params;
     const file=await required("files",id);
     if(file.purpose==="avatar")throw new HttpError(400,"Retira la foto desde el perfil. El archivo original se conserva.");
+    if(file.purpose==="solution")throw new HttpError(400,"Archiva las soluciones desde su carpeta. Las versiones anteriores se conservan.");
     const references=await database().prepare("SELECT id FROM resources WHERE instr(data,?)>0 UNION SELECT id FROM evidence WHERE instr(data,?)>0 UNION SELECT id FROM responses WHERE instr(data,?)>0 UNION SELECT id FROM sessions WHERE instr(data,?)>0 LIMIT 1").bind(id,id,id,id).first();
     if(references)throw new HttpError(409,"Retira primero el archivo de los recursos o evidencias que lo utilizan.");
     if(!env.BUCKET)throw new HttpError(503,"El almacenamiento no está disponible.");

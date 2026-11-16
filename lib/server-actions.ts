@@ -6,6 +6,7 @@ import { PROFILE_COLORS, PROFILE_AVATARS } from "./profile-customization";
 import { validAvatarFile } from "./server-avatar";
 import { ACTIVITY_SUPPORT_OPTIONS } from "./activity-support";
 import { commitStudentNotification } from "./server-notifications";
+import { assertNoSolutionReferences, patchFilesStatement, restorePdfSolution, setPdfSolutionsArchived } from "./server-pdf-solutions";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -21,12 +22,12 @@ function webLink(value:unknown) {
 function title(data:RecordData) {if(!text(data.title,250).trim()) throw new HttpError(400,"Añade un título.");}
 function skillState(value:unknown) {if(!STATES.includes(String(value))) throw new HttpError(400,"Selecciona un estado de aprendizaje válido.");}
 function supportMode(data:RecordData){if(data.supportMode!==undefined&&!ACTIVITY_SUPPORT_OPTIONS.some(option=>option.value===data.supportMode))throw new HttpError(400,"Indica si esta propuesta se hace sola, con docente o está por confirmar.");}
-async function activityResourceId(activity:RecordData,studentId:string){if(!activity.resourceId)return undefined;const resource=await required("resources",activity.resourceId);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"El recurso asociado no está disponible en este perfil.");return resource.id as string;}
-async function validateActivityResource(activity:RecordData){if(!activity.resourceId)return;const resource=await required("resources",activity.resourceId);for(const studentId of ["rocio","alejandra"] as const)if(allowedContent(activity,studentId)&&!allowedContent(resource,studentId))throw new HttpError(400,"El recurso debe estar disponible para todas las alumnas de esta actividad.");}
+async function activityResourceId(activity:RecordData,studentId:string){await assertNoSolutionReferences(activity);if(!activity.resourceId)return undefined;const resource=await required("resources",activity.resourceId);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"El recurso asociado no está disponible en este perfil.");return resource.id as string;}
+async function validateActivityResource(activity:RecordData){await assertNoSolutionReferences(activity);if(!activity.resourceId)return;const resource=await required("resources",activity.resourceId);for(const studentId of ["rocio","alejandra"] as const)if(allowedContent(activity,studentId)&&!allowedContent(resource,studentId))throw new HttpError(400,"El recurso debe estar disponible para todas las alumnas de esta actividad.");}
 async function ensureFileAccess(profile:Profile,ids:unknown,studentId:string) {
   if(ids===undefined) return;
   if(!Array.isArray(ids) || ids.length>8) throw new HttpError(400,"No se pueden adjuntar tantos archivos.");
-  for(const id of ids) {const file=await required("files",id); if(file.purpose==="avatar" || file.studentId!==studentId || file.detached===true || (profile!=="teacher" && file.shared!==true)) throw new HttpError(403,"Este archivo no está disponible para la alumna.");trackChange("files",file.id);}
+  for(const id of ids) {const file=await required("files",id); if(file.purpose==="avatar" || file.purpose==="solution" || file.studentId!==studentId || file.detached===true || (profile!=="teacher" && file.shared!==true)) throw new HttpError(403,"Este archivo no está disponible para la alumna.");trackChange("files",file.id);}
 }
 async function customizeProfile(old:RecordData,item:RecordData,data:RecordData){
   if(data.color!==undefined){if(data.color!==old.color&&!PROFILE_COLORS.includes(data.color))throw new HttpError(400,"Elige un color de la colección.");item.color=data.color;}
@@ -47,9 +48,10 @@ async function draftTarget(profile:Profile,data:RecordData){
   if(Boolean(data.activityId)===Boolean(data.resourceId))throw new HttpError(400,"Elige una actividad o un recurso para el borrador.");
   const kind=data.activityId?"activity":"resource",target=await required(kind==="activity"?"activities":"resources",data.activityId||data.resourceId);
   if(!allowedContent(target,studentId))throw new HttpError(403,"Este contenido no pertenece a tu perfil.");
+  await assertNoSolutionReferences(target);
   return {studentId,kind:kind as "activity"|"resource",target,id:draftId(studentId,kind,target.id)};
 }
-async function resourceIds(value:unknown,studentId:string,max=30){if(!Array.isArray(value)||value.length>max||value.some(id=>typeof id!=="string"))throw new HttpError(400,"La selección de recursos no es válida.");const ids=[...new Set(value)] as string[];for(const id of ids){const resource=await required("resources",id);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"Un recurso pertenece a otra alumna.");trackChange("resources",id);}return ids;}
+async function resourceIds(value:unknown,studentId:string,max=30){if(!Array.isArray(value)||value.length>max||value.some(id=>typeof id!=="string"))throw new HttpError(400,"La selección de recursos no es válida.");const ids=[...new Set(value)] as string[];for(const id of ids){const resource=await required("resources",id);if(!allowedContent(resource,validateStudent(studentId)))throw new HttpError(403,"Un recurso pertenece a otra alumna.");await assertNoSolutionReferences(resource);trackChange("resources",id);}return ids;}
 function submissionIdentity(studentId:string,value:unknown){if(value===undefined)return {id:crypto.randomUUID(),submissionId:undefined};if(typeof value!=="string"||!/^[A-Za-z0-9_-]{8,128}$/.test(value))throw new HttpError(400,"El identificador de la entrega no es válido.");return {id:`response:${studentId}:${value}`,submissionId:value};}
 function sameResponseContext(old:RecordData,studentId:string,activityId:string|undefined,resourceId:string|undefined){return old.studentId===studentId&&old.activityId===activityId&&(old.resourceId===resourceId||Boolean(activityId&&old.resourceId==null));}
 async function replayResponse(id:string,studentId:string,activityId:string|undefined,resourceId:string|undefined){const old=await get("responses",id);if(!old)return null;if(!sameResponseContext(old,studentId,activityId,resourceId))throw new HttpError(409,"Esta entrega ya se utilizó para otro contenido.");trackChange("responses",id);if(old.assignmentId)trackChange("assignments",old.assignmentId);if(activityId||resourceId)trackChange("drafts",draftId(studentId,activityId?"activity":"resource",activityId||resourceId!));return old;}
@@ -121,6 +123,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     if(base!==undefined && base!==(old?.updatedAt || "")){if(data.id)trackChange("sessions",data.id);return {id:data.id,conflict:true};}
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID(),studentId:validateStudent(data.studentId || old?.studentId)};
     delete item.baseUpdatedAt;
+    await ensureFileAccess(profile,item.fileIds,item.studentId);await assertNoSolutionReferences(item);
     date(item.date);
     if(!old && !isTrackingDate(item.date))throw new HttpError(400,`Las nuevas clases deben tener fecha del ${ACADEMY_START_DATE.split("-").reverse().join("/")} o posterior.`);
     if(!SESSION_STATES.includes(item.status || "por preparar")) throw new HttpError(400,"Estado de sesión no válido.");
@@ -145,6 +148,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const item:RecordData={...old,...data,id:old.id,studentId:old.studentId,status:"realizada",closedAt,closeOperationId:operationId};
     item.updatedAt=closedAt;
     delete item.skillUpdate;
+    await ensureFileAccess(profile,item.fileIds,item.studentId);await assertNoSolutionReferences(item);
     if(!text(item.content || item.sharedSummary).trim()) throw new HttpError(400,"Resume brevemente qué habéis trabajado.");
     await required("students",old.studentId);
     trackChange("sessions",old.id);trackChange("students",old.studentId);
@@ -177,6 +181,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   }
   if(action==="assignActivity") {
     const studentId=validateStudent(data.studentId),activity=await required("activities",data.activityId);
+    await assertNoSolutionReferences(activity);
     if(!allowedContent(activity,studentId)) throw new HttpError(400,"Adapta primero esta actividad para la alumna seleccionada.");
     if(data.sessionId) {const session=await required("sessions",data.sessionId);if(session.studentId!==studentId) throw new HttpError(400,"La sesión pertenece a otra alumna.");}
     if(!CATEGORIES.includes(data.category)) throw new HttpError(400,"Elige dónde se realizará la actividad.");
@@ -260,13 +265,14 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="upsertResource") {
     const old=data.id?await get("resources",data.id):null;
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID()};title(item);supportMode(data);
+    await assertNoSolutionReferences(item);
     if(item.collection!==undefined && !["materials","exam-prep"].includes(item.collection))throw new HttpError(400,"Elige materiales o preparación de exámenes.");
     if(item.examMode!==undefined && !["class","independent","either"].includes(item.examMode))throw new HttpError(400,"Elige cómo se utilizará el PDF de preparación.");
     if(item.studentId) validateStudent(item.studentId);
     webLink(item.url);
     if(item.fileId) {
       const file=await required("files",item.fileId);
-      if(file.purpose==="avatar")throw new HttpError(400,"Las fotos de perfil no son materiales de clase.");
+      if(file.purpose==="avatar"||file.purpose==="solution")throw new HttpError(400,"Las fotos de perfil y las soluciones privadas no son materiales de clase.");
       if(file.shared!==true||file.detached===true)throw new HttpError(400,"Marca el archivo como compartido y disponible antes de añadirlo a la biblioteca.");
       if(item.studentId && file.studentId!==item.studentId)throw new HttpError(400,"El archivo pertenece a otra alumna.");
       if(item.collection==="exam-prep"){
@@ -282,6 +288,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="useResource") {
     const studentId=ownStudent(profile,data.studentId || profile);
     const resource=await required("resources",data.resourceId);if(!allowedContent(resource,studentId))throw new HttpError(403,"Este recurso no pertenece a tu perfil.");
+    await assertNoSolutionReferences(resource);
     const identity=submissionIdentity(studentId,data.submissionId),replay=await replayResponse(identity.id,studentId,undefined,resource.id);if(replay)return {id:replay.id,alreadySubmitted:true};
     await ensureFileAccess(profile,data.fileIds,studentId);
     const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,resourceId:resource.id,kind:"resource-use",answer:text(data.answer,30000),comment:text(data.comment,5000),selfAssessment:selfAssessment(data.selfAssessment),procedure:procedure(data.procedure),hintsUsed:hintsUsed(data.hintsUsed,0),fileIds:data.fileIds || [],autoResult:null,reviewStatus:"pending",createdAt:new Date().toISOString()},draftId(studentId,"resource",resource.id),undefined,data.draftRevision,{profile,action,related:{resource}});return {id:item.id};
@@ -314,7 +321,7 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const studentId=ownStudent(profile,data.studentId || old?.studentId || profile),id=data.id || crypto.randomUUID();
     const item:RecordData={id,studentId,original:text(data.original ?? old?.original,150),corrected:text(data.corrected ?? old?.corrected,150),reason:text(data.reason ?? old?.reason,2000),sentence:text(data.sentence ?? old?.sentence,3000),reviewDate:data.reviewDate===undefined?old?.reviewDate || null:data.reviewDate || null,createdAt:old?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
     if(!item.original.trim()||!item.corrected.trim())throw new HttpError(400,"Escribe la palabra original y su corrección.");if(item.reviewDate)date(item.reviewDate);
-    for(const key of ["activityId","resourceId","sessionId"]){const value=data[key]===undefined?old?.[key]:data[key];if(!value)continue;const target=await required(key==="activityId"?"activities":key==="resourceId"?"resources":"sessions",value);if(!allowedContent(target,studentId))throw new HttpError(403,"El trabajo pertenece a otra alumna.");item[key]=value;}
+    for(const key of ["activityId","resourceId","sessionId"]){const value=data[key]===undefined?old?.[key]:data[key];if(!value)continue;const target=await required(key==="activityId"?"activities":key==="resourceId"?"resources":"sessions",value);if(!allowedContent(target,studentId))throw new HttpError(403,"El trabajo pertenece a otra alumna.");await assertNoSolutionReferences(target);item[key]=value;}
     trackChange("word_entries",id);
     const [saved]=await commitStudentNotification({profile,action,before:old,after:item,statements:[database().prepare("INSERT INTO word_entries (id,student_id,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE word_entries.student_id=?").bind(id,studentId,JSON.stringify(item),item.updatedAt,studentId)]});if(saved.meta.changes===0)throw new HttpError(403,"Esta palabra pertenece a otra alumna.");return {id};
   }
@@ -332,10 +339,14 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="manageFile"){
     const old=await required("files",data.id);
     if(old.purpose==="avatar")throw new HttpError(400,"Gestiona esta imagen desde la foto de perfil.");
+    if(old.purpose==="solution")throw new HttpError(400,"Gestiona la solución desde su carpeta privada.");
     if((data.shared!==undefined&&typeof data.shared!=="boolean")||(data.detached!==undefined&&typeof data.detached!=="boolean")||(data.shared===undefined&&data.detached===undefined))throw new HttpError(400,"Indica la visibilidad o retirada del archivo.");
-    await put("files",{...old,...(data.shared===undefined?{}:{shared:data.shared}),...(data.detached===undefined?{}:{detached:data.detached,detachedAt:data.detached?new Date().toISOString():null})});
+    const values:Array<[string,unknown]>=[];if(data.shared!==undefined)values.push(["$.shared",data.shared]);if(data.detached!==undefined)values.push(["$.detached",data.detached],["$.detachedAt",data.detached?new Date().toISOString():null]);
+    trackChange("files",old.id);await patchFilesStatement(values,"id=? AND COALESCE(json_extract(data,'$.purpose'),'') NOT IN ('avatar','solution')",[old.id]).run();
     for(const table of ["resources","evidence","responses","drafts","sessions"] as const)for(const item of await list(table))if(item.fileId===old.id||item.fileIds?.includes(old.id)||(table==="sessions"&&item.id===old.sessionId)||JSON.stringify(item).includes(old.id))trackChange(table,item.id);
     return {id:old.id};
   }
+  if(action==="setSolutionsArchived")return setPdfSolutionsArchived(profile,data.resourceId,data.archived);
+  if(action==="restorePdfSolution")return restorePdfSolution(profile,data.resourceId,data.fileId,data.operationId);
   throw new HttpError(400,"Esta acción no está disponible.");
 }

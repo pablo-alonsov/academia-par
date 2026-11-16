@@ -48,12 +48,13 @@ const uploadRoute=await import('../app/api/files/route.ts');
 const profilePhotoRoute=await import('../app/api/profile-photo/route.ts');
 const publicAvatarRoute=await import('../app/api/profiles/[id]/avatar/route.ts');
 const {hashPin,digest}=await import('../lib/server-auth.ts');
-const {seed}=await import('../lib/server-data.ts');
+const {seed,collectAction,actionPatch,trackChange}=await import('../lib/server-data.ts');
 const {initialData}=await import('../lib/seed.ts');
 const {legacySeedBaseline}=await import('../lib/seed-baseline.ts');
 const {createPdfSharePlan,shareTeacherPdf}=await import('../lib/share-teacher-pdf.ts');
 const {groupResourcesBySource,pdfFileForResource}=await import('../lib/resource-files.ts');
 const {isExamPreparation,examModeLabel}=await import('../lib/exam-materials.ts');
+const {worksheetKeyForFile}=await import('../lib/pdf-solutions.ts');
 const pin='local-regression-password';
 const pinHash=await hashPin(pin);
 const origin='https://academy.example';
@@ -839,4 +840,116 @@ test('PDFsharing legacy resources keep missing classification fields while reade
   const own=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json(),resource=own.resources.find(item=>item.id==='legacy-pdf-classification');assert.equal(isExamPreparation(resource),false);assert.equal(examModeLabel(resource.examMode),'En clase o por tu cuenta');assert.ok(!Object.hasOwn(resource,'collection'));assert.ok(!Object.hasOwn(resource,'examMode'));
  }
  assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM resources WHERE id=?').get('legacy-pdf-classification'),before);
+});
+
+async function pdfSolutionSetup(studentIds=['rocio','alejandra']){
+ const teacher=await login('teacher',pin),pupils={rocio:(await login('rocio')).cookie,alejandra:(await login('alejandra')).cookie},bucket=memoryBucket();
+ const plan=await createPdfSharePlan({file:new File([pdf],'Ficha original.pdf',{type:'application/pdf'}),title:'Ficha original con solución privada',subject:'Matemáticas',studentIds});await shareTeacherPdf(plan,pdfSharingDependencies(teacher.cookie));
+ return {teacher,pupils,bucket,plan};
+}
+async function uploadSolution(cookie,{resourceId,uploadId=crypto.randomUUID(),bytes=pdf,name='PRIVATE-SOLUTION.pdf',purpose='solution',type='application/pdf',studentId='alejandra',shared='true'}={}){
+ const form=new FormData();form.set('file',new File([bytes],name,{type}));form.set('purpose',purpose);if(resourceId!==undefined)form.set('resourceId',resourceId);if(uploadId!==null)form.set('uploadId',uploadId);form.set('studentId',studentId);form.set('shared',shared);
+ return uploadRoute.POST(new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin,...(cookie?{Cookie:cookie}:{})},body:form}));
+}
+async function savedSolution(cookie,options){const response=await uploadSolution(cookie,options),body=await response.json();assert.equal(response.status,200,JSON.stringify(body));return body;}
+const solutionBytes=version=>Buffer.concat([pdf,Buffer.from(`\n% PRIVATE solution ${version}\n`)]);
+function solutionRows(){return sqlite.prepare("SELECT * FROM files WHERE json_extract(data,'$.purpose')='solution' ORDER BY id").all();}
+
+test('PDFsolutions uploads require teacher and verified original and solution PDFs, with server-owned privacy',async()=>{
+ const {teacher,pupils,bucket,plan}=await pdfSolutionSetup(['rocio']),resourceId=plan.targets[0].resourceId;
+ assert.equal((await uploadSolution(undefined,{resourceId})).status,401);
+ for(const cookie of Object.values(pupils))assert.equal((await uploadSolution(cookie,{resourceId})).status,403);
+ assert.equal((await uploadSolution(teacher.cookie,{resourceId,uploadId:null})).status,400);assert.equal((await uploadSolution(teacher.cookie,{})).status,400);
+ for(const bytes of [png,Buffer.from('Not a PDF')])assert.equal((await uploadSolution(teacher.cookie,{resourceId,bytes})).status,400);
+ assert.equal((await uploadSolution(teacher.cookie,{resourceId,bytes:new Uint8Array(8*1024*1024+1)})).status,413);assert.equal(bucket.puts,1);
+ const image=await pdfSharingDependencies(teacher.cookie).uploadFile({studentId:'rocio',uploadId:crypto.randomUUID()},new File([png],'imagen.png',{type:'image/png'}));await mutate(teacher.cookie,'upsertResource',{id:'image-not-worksheet',studentId:'rocio',fileId:image.id,title:'Imagen'});
+ assert.equal((await uploadSolution(teacher.cookie,{resourceId:'image-not-worksheet'})).status,400);
+ const before=pdfSharingDomain(),result=await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('one'),studentId:'other',shared:'true'}),row=JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(result.id).data);
+ assert.equal(row.purpose,'solution');assert.equal(row.studentId,'rocio');assert.equal(row.shared,false);assert.equal(result.shared,false);assert.equal(result.type,'application/pdf');assert.equal(result._solutionStatus,'current');assert.equal(row._solutionWorksheetKey,worksheetKeyForFile(JSON.parse(before.files.find(file=>file.id===plan.targets[0].file.id).data)));assert.ok(!Object.hasOwn(result,'key'));assert.ok(!Object.hasOwn(result,'_solutionUploadNonce'));
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='files')assert.deepEqual(after[table],before[table],table);assert.equal(after.files.length,before.files.length+1);
+});
+
+test('PDFsolutions identical worksheet copies share versions, archive flags and idempotent cross-copy replays',async()=>controlledClock(async clock=>{
+ const {teacher,bucket,plan}=await pdfSolutionSetup(),[rocio,alejandra]=plan.targets,before=pdfSharingDomain(),firstUploadId=crypto.randomUUID();
+ const first=await savedSolution(teacher.cookie,{resourceId:rocio.resourceId,uploadId:firstUploadId,bytes:solutionBytes('first')}),uploadedAt=JSON.parse(solutionRows().find(row=>row.id===first.id).data).createdAt;clock.set(clock.now()+1000);
+ const second=await savedSolution(teacher.cookie,{resourceId:alejandra.resourceId,bytes:solutionBytes('second')});
+ const firstRow=JSON.parse(solutionRows().find(row=>row.id===first.id).data),secondRow=JSON.parse(solutionRows().find(row=>row.id===second.id).data);
+ assert.equal(firstRow._solutionWorksheetKey,secondRow._solutionWorksheetKey);assert.equal(firstRow._solutionStatus,'previous');assert.equal(secondRow._solutionStatus,'current');assert.ok(firstRow.createdAt<secondRow.createdAt);assert.equal(firstRow.createdAt,uploadedAt);assert.ok(firstRow._solutionUpdatedAt>uploadedAt);
+ const unchanged=sqlite.prepare('SELECT * FROM files ORDER BY id').all(),puts=bucket.puts;
+ const replay=await savedSolution(teacher.cookie,{resourceId:alejandra.resourceId,uploadId:firstUploadId,bytes:solutionBytes('first')});assert.equal(replay.id,first.id);assert.equal(replay.alreadyUploaded,true);assert.equal(replay._solutionStatus,'previous');assert.equal(bucket.puts,puts);assert.deepEqual(sqlite.prepare('SELECT * FROM files ORDER BY id').all(),unchanged);
+ assert.equal((await uploadSolution(teacher.cookie,{resourceId:rocio.resourceId,uploadId:firstUploadId,bytes:solutionBytes('changed')})).status,409);assert.equal(bucket.puts,puts);
+ await mutate(teacher.cookie,'setSolutionsArchived',{resourceId:rocio.resourceId,archived:true});for(const target of plan.targets)assert.equal(JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data)._solutionsArchived,true);
+ assert.deepEqual(solutionRows().map(row=>JSON.parse(row.data)._solutionStatus).sort(),['current','previous']);
+ await mutate(teacher.cookie,'setSolutionsArchived',{resourceId:alejandra.resourceId,archived:false});for(const target of plan.targets)assert.equal(JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data)._solutionsArchived,false);
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='files')assert.deepEqual(after[table],before[table],table);
+}));
+
+test('PDFsolutions restore operations do not replay after newer uploads or later restorations and reactivate folders',async()=>{
+ const {teacher,plan}=await pdfSolutionSetup(),resourceId=plan.targets[0].resourceId;
+ const first=await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('restore-first')}),second=await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('restore-second')}),operation=crypto.randomUUID();
+ await mutate(teacher.cookie,'setSolutionsArchived',{resourceId,archived:true});const restored=await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:first.id,operationId:operation});assert.ok(restored.patch.files.some(row=>row.id===first.id&&row._solutionStatus==='current'));assert.ok(plan.targets.every(target=>JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data)._solutionsArchived===false));
+ const third=await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('restore-third')}),rowsAfter=solutionRows();
+ const retry=await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:first.id,operationId:operation});assert.equal(retry.alreadyRestored,true);assert.deepEqual(solutionRows(),rowsAfter);assert.equal(JSON.parse(solutionRows().find(row=>row.id===third.id).data)._solutionStatus,'current');
+ await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:first.id,operationId:crypto.randomUUID()});await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:second.id,operationId:crypto.randomUUID()});const later=solutionRows();await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:first.id,operationId:operation});assert.deepEqual(solutionRows(),later);
+ await mutate(teacher.cookie,'restorePdfSolution',{resourceId,fileId:second.id,operationId:operation},409);
+ await mutate(teacher.cookie,'setSolutionsArchived',{resourceId,archived:true});await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('activates')});for(const target of plan.targets)assert.equal(JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data)._solutionsArchived,false);
+});
+
+test('PDFsolutions remain absent from every pupil read and pedagogical write even if shared metadata is forged',async()=>{
+ const {teacher,pupils,plan}=await pdfSolutionSetup(['rocio']),resourceId=plan.targets[0].resourceId,solution=await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('PRIVATE-BYTES')});
+ sqlite.prepare("UPDATE files SET data=json_set(data,'$.shared',json('true')) WHERE id=?").run(solution.id);
+ const context={params:Promise.resolve({id:solution.id})},url=`/api/files/${solution.id}`;
+ for(const suffix of ['', '?view=inline']){
+  for(const cookie of Object.values(pupils))assert.equal((await fileRoute.GET(request(url+suffix,{cookie}),context)).status,403);
+  assert.equal((await fileRoute.GET(request(url+suffix),context)).status,401);const own=await fileRoute.GET(request(url+suffix,{cookie:teacher.cookie}),context);assert.equal(own.status,200);assert.deepEqual(Buffer.from(await own.arrayBuffer()),solutionBytes('PRIVATE-BYTES'));
+ }
+ for(const [actionName,payload,status]of [
+  ['manageFile',{id:solution.id,shared:true},400],['manageFile',{id:solution.id,detached:true},400],['upsertResource',{id:'forbidden-solution-resource',studentId:'rocio',title:'Private',fileId:solution.id},400],['upsertResource',{id:'forbidden-solution-url',title:'Private',url:origin+url},400],['upsertActivity',{id:'forbidden-solution-activity',studentId:'rocio',title:'Private',type:'paper',url:origin+url},400],['saveEvidence',{studentId:'rocio',fileId:solution.id,title:'Private',shared:true},403],['upsertSession',{id:'forbidden-solution-session',studentId:'rocio',date:'2026-11-16',status:'preparada',duration:60,fileIds:[solution.id]},403],
+ ])await mutate(teacher.cookie,actionName,payload,status);
+ assert.equal((await fileRoute.DELETE(new Request(origin+url,{method:'DELETE',headers:{Cookie:teacher.cookie,Origin:origin}}),context)).status,400);
+ await mutate(pupils.rocio,'saveDraft',{activityId:'r-tonica-telefono',fileIds:[solution.id]},403);await mutate(pupils.rocio,'submitResponse',{activityId:'r-tonica-telefono',answer:'lé',fileIds:[solution.id]},403);await mutate(pupils.rocio,'useResource',{resourceId,answer:'No private attachments',fileIds:[solution.id]},403);
+ for(const cookie of Object.values(pupils)){await mutate(cookie,'setSolutionsArchived',{resourceId,archived:true},403);await mutate(cookie,'restorePdfSolution',{resourceId,fileId:solution.id,operationId:crypto.randomUUID()},403);}
+ for(const cookie of Object.values(pupils)){const snapshot=await (await data.GET(request('/api/data',{cookie}))).json();assert.ok(!JSON.stringify(snapshot).includes(solution.id));assert.ok(!JSON.stringify(snapshot).includes('PRIVATE-SOLUTION'));assert.ok(!JSON.stringify(snapshot).includes('_solutionsArchived'));}
+ const management=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.equal(management.files.find(file=>file.id===solution.id).purpose,'solution');assert.ok(!JSON.stringify(management).includes('_solutionUploadNonce'));assert.ok(!JSON.stringify(management).includes('_solutionRestoreOperations'));
+});
+
+test('PDFsolutions legacy structured references are removed from pupil snapshots and mutation patches',async()=>{
+ const {teacher,pupils,plan}=await pdfSolutionSetup(['rocio']),resourceId=plan.targets[0].resourceId,solution=await savedSolution(teacher.cookie,{resourceId});
+ sqlite.prepare("UPDATE files SET data=json_set(data,'$.shared',json('true')) WHERE id=?").run(solution.id);
+ insertRecord('resources',{id:'private-linked-resource',studentId:'rocio',title:'PRIVATE-REFERENCE',url:`/api/files/${solution.id}?view=inline`});
+ insertRecord('activities',{id:'private-linked-activity',studentId:'rocio',title:'PRIVATE-REFERENCE',type:'external',resourceId:'private-linked-resource'});
+ insertRecord('assignments',{id:'private-linked-assignment',studentId:'rocio',activityId:'private-linked-activity',category:'Para casa'});
+ insertRecord('drafts',{id:'private-linked-draft',studentId:'rocio',resourceId:'private-linked-resource',answer:'Private target'});
+ insertRecord('responses',{id:'private-linked-response',studentId:'rocio',activityId:'private-linked-activity',answer:'Private target'});
+ insertRecord('word_entries',{id:'private-linked-word',studentId:'rocio',resourceId:'private-linked-resource',original:'antes',corrected:'ahora'});
+ insertRecord('sessions',{id:'public-diary-kept',studentId:'rocio',status:'realizada',date:'2026-11-16',content:'Keep the shared diary text',activityId:'private-linked-activity',alternativeActivityId:'private-linked-activity',fileIds:[solution.id]});
+ sqlite.prepare("UPDATE students SET data=json_set(data,'$.favoriteResourceIds',json(?),'$.pinnedResourceIds',json(?),'$.mainActivityId',?,'$.alternativeActivityId',?) WHERE id='rocio'").run('["private-linked-resource"]','["private-linked-resource"]','private-linked-activity','private-linked-activity');
+ const hidden={files:[solution.id],resources:['private-linked-resource'],activities:['private-linked-activity'],assignments:['private-linked-assignment'],drafts:['private-linked-draft'],responses:['private-linked-response'],word_entries:['private-linked-word']};
+ const snapshot=await (await data.GET(request('/api/data',{cookie:pupils.rocio}))).json();assert.ok(!JSON.stringify(snapshot).includes(solution.id));assert.ok(!JSON.stringify(snapshot).includes('private-linked'));assert.equal(snapshot.sessions[0].content,'Keep the shared diary text');assert.deepEqual(snapshot.sessions[0].fileIds,[]);
+ const collected=await collectAction(async()=>{for(const [table,ids]of Object.entries(hidden))for(const id of ids)trackChange(table,id);trackChange('students','rocio');trackChange('sessions','public-diary-kept');});const patch=await actionPatch('rocio',collected.changes);
+ for(const [table,ids]of Object.entries(hidden)){assert.deepEqual(patch.patch[table],[]);assert.deepEqual(patch.removed[table],ids);}assert.ok(!JSON.stringify(patch.patch).includes(solution.id));assert.ok(!JSON.stringify(patch.patch).includes('private-linked'));
+ await mutate(pupils.rocio,'saveDraft',{resourceId:'private-linked-resource',answer:'No'},400);await mutate(pupils.rocio,'updatePreferences',{favoriteResourceIds:['private-linked-resource']},400);await mutate(pupils.rocio,'upsertWord',{resourceId:'private-linked-resource',original:'no',corrected:'sí'},400);
+ await mutate(teacher.cookie,'upsertActivity',{id:'another-private-wrapper',studentId:'rocio',title:'No public wrapper',type:'external',resourceId:'private-linked-resource'},400);
+});
+
+test('PDFsolutions concurrent uploads elect one current version and ignored retries never promote an older version',async()=>{
+ const {teacher,bucket,plan}=await pdfSolutionSetup(),firstId=crypto.randomUUID(),secondId=crypto.randomUUID();
+ const responses=await Promise.all([savedSolution(teacher.cookie,{resourceId:plan.targets[0].resourceId,uploadId:firstId,bytes:solutionBytes('concurrent-A')}),savedSolution(teacher.cookie,{resourceId:plan.targets[1].resourceId,uploadId:secondId,bytes:solutionBytes('concurrent-B')})]);
+ const rows=solutionRows();assert.equal(rows.length,2);assert.equal(rows.filter(row=>JSON.parse(row.data)._solutionStatus==='current').length,1);assert.equal(bucket.objects.size,4);assert.equal(bucket.puts,4);
+ await savedSolution(teacher.cookie,{resourceId:plan.targets[1].resourceId,uploadId:firstId,bytes:solutionBytes('concurrent-A')});await savedSolution(teacher.cookie,{resourceId:plan.targets[0].resourceId,uploadId:secondId,bytes:solutionBytes('concurrent-B')});assert.deepEqual(solutionRows(),rows);assert.equal(bucket.puts,4);assert.notEqual(responses[0].id,responses[1].id);
+});
+
+test('PDFsolutions failed version transaction preserves previous state and removes its uncommitted R2 candidate',async()=>{
+ const {teacher,bucket,plan}=await pdfSolutionSetup(['rocio']),resourceId=plan.targets[0].resourceId;await savedSolution(teacher.cookie,{resourceId,bytes:solutionBytes('kept')});await mutate(teacher.cookie,'setSolutionsArchived',{resourceId,archived:true});
+ const before=pdfSharingDomain(),size=bucket.objects.size,adapter=globalThis.__arpAuthTestEnv.DB,original=adapter.batch.bind(adapter);
+ adapter.batch=statements=>original(statements.map((statement,index)=>index===1&&statements[0]?.sql.startsWith('INSERT OR IGNORE INTO files')?{run:async()=>{throw Error('simulated solution transaction failure');}}:statement));
+ try{assert.equal((await uploadSolution(teacher.cookie,{resourceId,bytes:solutionBytes('must rollback')})).status,500);}finally{adapter.batch=original;}
+ assert.deepEqual(pdfSharingDomain(),before);assert.equal(bucket.objects.size,size);
+});
+
+test('PDFsolutions public file management cannot overwrite private group flags or stale private input',async()=>{
+ const {teacher,plan}=await pdfSolutionSetup(['rocio']),target=plan.targets[0],original=D1Statement.prototype.run;let injected=false;
+ D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE files')&&this.bindings.includes('$.shared')){injected=true;sqlite.prepare("UPDATE files SET data=json_set(data,'$._solutionsArchived',json('true'),'$._privateConcurrentMarker','kept') WHERE id=?").run(target.file.id);}return original.call(this);};
+ try{await mutate(teacher.cookie,'manageFile',{id:target.file.id,shared:true,_solutionsArchived:false,_privateConcurrentMarker:'forged',purpose:'solution'});}finally{D1Statement.prototype.run=original;}
+ const row=JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data);assert.equal(injected,true);assert.equal(row._solutionsArchived,true);assert.equal(row._privateConcurrentMarker,'kept');assert.notEqual(row.purpose,'solution');assert.equal(row.shared,true);
 });

@@ -3,9 +3,11 @@ import { digest, fail, HttpError, json, ownStudent, requireProfile, sameOrigin }
 import { get, recordStatement, required, type RecordData } from "@/lib/server-data";
 import { detectUploadType, MAX_UPLOAD_BYTES } from "@/lib/upload-format";
 import { commitStudentNotification, triggerNotificationDelivery } from "@/lib/server-notifications";
+import { uploadPdfSolution } from "@/lib/server-pdf-solutions";
 export const dynamic="force-dynamic";
-function uploadResult(item:RecordData,alreadyUploaded=false){return json({id:item.id,url:item.url,name:item.name,shared:item.shared,type:item.type,size:item.size,...(alreadyUploaded?{alreadyUploaded:true}:{})});}
+function uploadResult(item:RecordData,alreadyUploaded=false){return json({id:item.id,url:item.url,name:item.name,shared:item.purpose==="solution"?false:item.shared,type:item.type,size:item.size,...(item.purpose==="solution"?{purpose:"solution",_solutionWorksheetKey:item._solutionWorksheetKey,_solutionStatus:item._solutionStatus,_solutionUpdatedAt:item._solutionUpdatedAt}:{}),...(alreadyUploaded?{alreadyUploaded:true}:{})});}
 function checkReplay(old:RecordData,item:RecordData){
+  if(old.purpose==="solution"||old.purpose==="avatar")throw new HttpError(403,"Este archivo no está disponible como material de las alumnas.");
   if(old.studentId!==item.studentId)throw new HttpError(403,"Este archivo pertenece a otra alumna.");
   if(old.contentHash!==item.contentHash || old.type!==item.type || old.size!==item.size || (old.sessionId || null)!==(item.sessionId || null))throw new HttpError(409,"Este intento de carga corresponde a otro archivo. Vuelve a seleccionarlo.");
   if(old.detached===true)throw new HttpError(409,"Este archivo se ha retirado. Vuelve a seleccionarlo para adjuntarlo de nuevo.");
@@ -16,6 +18,7 @@ export async function POST(request:Request) {
     if(!env.BUCKET)throw new HttpError(503,"El almacenamiento de archivos no está disponible.");
     if(Number(request.headers.get("content-length") || 0)>9000000)throw new HttpError(413,"El archivo debe ocupar menos de 8 MB.");
     const form=await request.formData();const file=form.get("file");
+    if(form.get("purpose")==="solution"){const result=await uploadPdfSolution(profile,form);return uploadResult(result.file,result.alreadyUploaded);}
     if(!file || typeof file==="string" || !("arrayBuffer" in file))throw new HttpError(400,"Selecciona un archivo.");
     if(file.size>MAX_UPLOAD_BYTES || file.size===0)throw new HttpError(413,"El archivo debe ocupar entre 1 byte y 8 MB.");
     const studentId=ownStudent(profile,form.get("studentId") || profile);

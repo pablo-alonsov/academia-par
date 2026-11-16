@@ -9,6 +9,11 @@ test('metadata detection leaves teacher visibility and access enforcement to the
  const privatePdf={id:'private-pdf',type:'application/pdf',shared:false,detached:true};assert.equal(pdfFileForResource({fileId:privatePdf.id},[privatePdf]),privatePdf);assert.equal(pdfFileForResource({fileId:privatePdf.id},[]),undefined);
 });
 
+test('a private solution PDF is never a practice worksheet even if its metadata says shared',()=>{
+ const answer={id:'answer',type:'application/pdf',purpose:'solution',shared:true};
+ assert.equal(pdfFileForResource({fileId:'answer'},[answer]),undefined);
+});
+
 test('source groups distinguish a web PDF from an uploaded file without guessing from its label',()=>{
  const webPdf={id:'web-pdf',url:'https://example.org/ficha.pdf',type:'PDF'},labelOnly={id:'label-pdf',url:'https://example.org/read',type:'PDF'},uploaded={id:'uploaded',fileId:'pdf-file',url:'/api/files/pdf-file'};
  const result=groupResourcesBySource([webPdf,uploaded,labelOnly],[{id:'pdf-file',type:'application/pdf'}]);
