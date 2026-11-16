@@ -56,6 +56,16 @@
 .ss-student-lists .ss-resource-card>h3{font-size:max(var(--arp-font-min, 0px), calc(16px * var(--arp-font-scale, 1)));line-height:1.6;margin:0}
 .ss-student-lists .ss-resource-card .sw-resource-tags{margin:0;gap:7px}
 .ss-student-lists .ss-resource-card>.sv-resource-open{margin:0;margin-top:auto;min-height:44px;align-self:flex-start;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)))}
+.ss-resource-group{gap:16px;padding-top:6px;min-width:0}
+.ss-resource-group+.ss-resource-group{border-top:1px solid var(--line);padding-top:28px;margin-top:8px}
+.ss-resource-group-heading{display:flex;align-items:center;gap:13px;min-width:0}
+.ss-resource-group-heading>div{flex:1;min-width:0}
+.ss-student-lists .ss-resource-group-heading h2{font-size:max(var(--arp-font-min,0px),calc(20px * var(--arp-font-scale,1)));line-height:1.4;letter-spacing:-.45px;margin:0}
+.ss-resource-group-heading p{color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));line-height:1.6;margin:4px 0 0}
+.ss-resource-group-icon{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border-radius:12px;color:var(--primary);background:var(--surface2)}
+.ss-resource-group-heading>.badge{flex-shrink:0}
+.ss-resource-group-empty{margin:0;padding:18px 20px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(14px * var(--arp-font-scale,1)));line-height:1.7}
+.ss-resource-group-more{align-self:flex-start}
 .ss-student-lists .ss-result-count{margin:0;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
 .ss-student-lists .ss-home-personalization{margin-top:2px}
 @media(max-width:600px){
