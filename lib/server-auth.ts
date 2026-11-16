@@ -53,6 +53,10 @@ export async function requireProfile(request: Request) {
   const profile=await currentProfile(request); if(!profile) throw new HttpError(401,"Elige tu perfil para continuar.");
   const expected=request.headers.get("X-ARP-Profile");
   if(expected!==null && expected!==profile)throw new HttpError(409,"El perfil ha cambiado en otra pestaña. Vuelve a elegirlo para continuar.","PROFILE_CHANGED");
+  if(!['GET','HEAD','OPTIONS'].includes(request.method)&&new URL(request.url).pathname!=='/api/maintenance/reset-learning'){
+    const row=await database().prepare("SELECT json_extract(data,'$.resultVersion') AS version FROM students WHERE id='rocio'").first<{version:string|null}>();
+    if(row?.version&&request.headers.get('X-ARP-Result-Version')!==row.version)throw new HttpError(409,'Los resultados se han reiniciado. Recarga la página para continuar.','RESULTS_RESET');
+  }
   return profile;
 }
 export function teacherOnly(profile: Profile) { if(profile!=="teacher") throw new HttpError(403,"Esta acción es exclusiva del panel docente."); }

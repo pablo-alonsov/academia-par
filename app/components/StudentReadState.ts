@@ -1,5 +1,6 @@
 "use client";
-const key = (studentId: string) => `arp-review-read-v1:${studentId}`;
+import {resultStoragePrefix} from "../../lib/client-result-state";
+const key = (studentId: string) => `${resultStoragePrefix('arp-review-read-v1:')}${studentId}`;
 const version = (item: any) => item.reviewedAt || item.resolvedAt || item.updatedAt || item.createdAt || "";
 function load(studentId: string): Record<string, string> | null { try { return JSON.parse(localStorage.getItem(key(studentId)) || "null"); } catch { return null; } }
 function save(studentId: string, values: Record<string, string>) { try { localStorage.setItem(key(studentId), JSON.stringify(values)); window.dispatchEvent(new Event("arp-review-read-changed")); } catch { /* No unread claims when browser storage is unavailable. */ } }

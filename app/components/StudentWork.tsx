@@ -9,6 +9,8 @@ import MathAnswerField from "./MathAnswerField";
 import { responsesForActivity, responsesForResource } from "@/lib/resource-work";
 import { responseContextLabel } from "@/lib/response-context";
 import MathText from "./MathText";
+import ExerciseFeedbackToast, {type ExerciseFeedback} from './ExerciseFeedbackToast';
+import {createExerciseReturn} from '@/lib/exercise-return';
 import "./work-simple.css";
 
 type Item = Record<string, any>;
@@ -76,45 +78,72 @@ export function StudentActivityDetail({ activity, assignment, student, data, act
   const resource = (data.resources || []).find((item:Item)=>item.id===activity.resourceId);
   const draft = useStudentDraft({studentId:student.id,activityId:activity.id},data.drafts || [],act,resource ? [{studentId:student.id,resourceId:resource.id,label:"Respuesta anterior del recurso"},...(data.activities || []).filter((item:Item)=>item.resourceId===resource.id && item.id!==activity.id).map((item:Item)=>({studentId:student.id,activityId:item.id,label:`Respuesta de «${item.title}»`}))] : []);
   const {value} = draft;
-  const [busy,setBusy] = useState(false),[error,setError] = useState(""),[confirmation,setConfirmation] = useState<Item|null>(null);
-  const heading=useRef<HTMLHeadingElement>(null),lastHint=useRef<HTMLDivElement>(null),focusHint=useRef(false),historySection=useRef<HTMLDetailsElement>(null);
+  const [busy,setBusy] = useState(false),[error,setError] = useState(""),[confirmation,setConfirmation] = useState<Item|null>(null),[returning,setReturning]=useState(false),[feedback,setFeedback]=useState<ExerciseFeedback|null>(null);
+  const heading=useRef<HTMLHeadingElement>(null),answerForm=useRef<HTMLFormElement>(null),lastHint=useRef<HTMLDivElement>(null),focusHint=useRef(false),historySection=useRef<HTMLDetailsElement>(null);
+  const mounted=useRef(true),submitting=useRef(false),returningRef=useRef(false),onBackRef=useRef(onBack),returnTimer=useRef<ReturnType<typeof createExerciseReturn>|null>(null);
+  onBackRef.current=onBack;
+  if(!returnTimer.current)returnTimer.current=createExerciseReturn();
   const hints:string[]=activity.hints || [],hintsUsed=value.hintsUsed.filter(index=>Number.isInteger(index)&&index>=0&&index<hints.length);
   const responses=responsesForActivity(activity,student.id,data.responses || [],data.activities || []);
   const latest=[...responses].sort((a,b)=>(b.createdAt || "").localeCompare(a.createdAt || ""))[0];
   const closed=["choice","numeric","fraction","text"].includes(activity.type);
   const canCheck=["choice","numeric","fraction"].includes(activity.type) || activity.type==="text" && activity.autoCheck===true;
   const hasResponse=Boolean(value.answer.trim() || !closed && (value.fileIds.length || Object.values(value.procedure).some(item=>item.trim())));
-  const changeAnswer=(answer:string)=>{setConfirmation(null);setError("");draft.setValue({answer})};
+  const changeAnswer=(answer:string)=>{if(submitting.current||returningRef.current)return;setFeedback(null);setConfirmation(null);setError("");draft.setValue({answer})};
+  useEffect(()=>{
+    mounted.current=true;
+    const beforeNavigation=()=>{if(!returningRef.current)return;returnTimer.current?.cancel();returningRef.current=false;setReturning(false);setFeedback(null)};
+    window.addEventListener('arp:before-navigation',beforeNavigation);
+    return()=>{mounted.current=false;returnTimer.current?.cancel();window.removeEventListener('arp:before-navigation',beforeNavigation)};
+  },[]);
+  useEffect(()=>{returnTimer.current?.cancel();returningRef.current=false;setReturning(false);setFeedback(null);setConfirmation(null)},[activity.id,student.id]);
   useEffect(()=>{heading.current?.focus({preventScroll:true})},[activity.id]);
   useEffect(()=>{if(latest?.reviewStatus==="reviewed")markRead(student.id,[latest])},[latest?.id,latest?.reviewedAt]);
   useEffect(()=>{if(focusHint.current){lastHint.current?.focus({preventScroll:true});lastHint.current?.scrollIntoView({block:"nearest",behavior:"auto"});focusHint.current=false}},[hintsUsed.length]);
-  const leave=async()=>{if(busy || draft.busy)return;try{await draft.flush();onBack()}catch{if(draft.canLeave())onBack();else setError("No se ha podido terminar el guardado. Reinténtalo antes de salir.")}};
+  const leave=async()=>{if(submitting.current || draft.busy)return;returnTimer.current?.cancel();returningRef.current=false;setReturning(false);setFeedback(null);try{await draft.flush();onBackRef.current()}catch{if(draft.canLeave())onBackRef.current();else setError("No se ha podido terminar el guardado. Reinténtalo antes de salir.")}};
   const submit=async(event:React.FormEvent)=>{
-    event.preventDefault();if(!hasResponse || busy || draft.busy || draft.conflict)return;
-    setBusy(true);setError("");
-    try{await draft.flush();draft.pause();const result=await act("submitResponse",{...(assignment?{assignmentId:assignment.id}:{activityId:activity.id}),...value,hintsUsed,submissionId:draft.submissionId,draftRevision:draft.getDraftRevision()});draft.complete(result);setConfirmation({...result,answer:value.answer});requestAnimationFrame(()=>heading.current?.focus({preventScroll:true}));notify(result.autoResult==="correct"?"Respuesta correcta y guardada.":result.autoResult==="incorrect"?"Respuesta guardada. Revisa el resultado.":"Respuesta guardada.")}
-    catch(reason:any){draft.resume();setError(String(reason.message || "No se ha podido guardar la respuesta. El texto se conserva para volver a intentarlo.").replace(/borrador/gi,"trabajo"))}
-    finally{setBusy(false)}
+    event.preventDefault();if(!hasResponse || submitting.current || returningRef.current || draft.busy || draft.conflict)return;
+    submitting.current=true;setBusy(true);setError("");setFeedback(null);setConfirmation(null);
+    try{
+      await draft.flush();draft.pause();
+      const result=await act("submitResponse",{...(assignment?{assignmentId:assignment.id}:{activityId:activity.id}),...value,hintsUsed,submissionId:draft.submissionId,draftRevision:draft.getDraftRevision()});
+      draft.complete(result);
+      if(!mounted.current)return;
+      if(result.autoResult==='correct'){
+        returningRef.current=true;setReturning(true);
+        setFeedback({id:crypto.randomUUID(),tone:'success',title:'Respuesta correcta',description:'Volviendo a la pantalla anterior…'});
+        returnTimer.current?.schedule(result.autoResult,()=>{if(!mounted.current||!returningRef.current)return;returningRef.current=false;setReturning(false);setFeedback(null);onBackRef.current()});
+      }else if(result.autoResult==='incorrect'){
+        setFeedback({id:crypto.randomUUID(),tone:'error',title:'Respuesta incorrecta',description:'Escribe otra respuesta y vuelve a comprobarla.'});
+        requestAnimationFrame(()=>{if(mounted.current)answerForm.current?.querySelector<HTMLElement>('input[type="text"],textarea,input[type="radio"]')?.focus({preventScroll:true})});
+      }else{
+        setConfirmation({...result,answer:value.answer});notify('Respuesta guardada.');
+        requestAnimationFrame(()=>{if(mounted.current)heading.current?.focus({preventScroll:true})});
+      }
+    }
+    catch(reason:any){if(mounted.current){draft.resume();setError(String(reason.message || "No se ha podido guardar la respuesta. El texto se conserva para volver a intentarlo.").replace(/borrador/gi,"trabajo"));setFeedback({id:crypto.randomUUID(),tone:'error',title:'No se ha podido guardar',description:'Tu respuesta se conserva. Vuelve a intentarlo.'})}}
+    finally{submitting.current=false;if(mounted.current)setBusy(false)}
   };
   const showDetails=activity.objective || activity.materials || activity.explanation;
   return <div className="student-views sv-stack sw-simple-work sw-classroom-work">
     <button className="btn quiet sv-back" disabled={busy || draft.busy} onClick={leave}><ArrowLeft size={17}/>{backLabel}</button>
     <div className="sv-detail-heading"><div className="row wrap"><span className="sv-subject"><BookOpen size={14}/>{activity.subject}</span></div><h1 ref={heading} tabIndex={-1}><MathText subject={activity.subject}>{activity.title}</MathText></h1></div>
-    <form id="activity-answer" className="card sv-pad sw-classroom-form" onSubmit={submit} aria-label="Resolver el ejercicio">
+    <form ref={answerForm} id="activity-answer" className="card sv-pad sw-classroom-form" onSubmit={submit} aria-label="Resolver el ejercicio" aria-busy={busy || returning}>
       <section className="sw-classroom-instructions" aria-label="Enunciado">{resource && <MaterialFiles resource={resource} files={data.files || []}/>}<p className="sv-preline sv-instructions"><MathText subject={activity.subject}>{activity.instructions}</MathText></p>{activity.type==="external" && (activity.url || resource?.url) && <a className="btn secondary" href={activity.url || resource?.url} target="_blank" rel="noopener noreferrer">Abrir recurso<ExternalLink size={16}/></a>}</section>
-      <fieldset disabled={busy || draft.busy || Boolean(draft.conflict)} className="sw-editor-fields">
+      <fieldset disabled={busy || returning || draft.busy || Boolean(draft.conflict)} className="sw-editor-fields">
         {activity.type==="choice" && activity.options?.length ? <fieldset className="sv-options"><legend>Elige tu respuesta</legend>{activity.options.map((option:any,index:number)=>{const label=typeof option==="string"?option:option.label || option.value;return <label key={index} className={value.answer===String(label)?"selected":""}><input type="radio" name="answer" required value={String(label)} checked={value.answer===String(label)} onChange={event=>changeAnswer(event.target.value)}/><span><MathText subject={activity.subject}>{label}</MathText></span></label>})}</fieldset> : closed ? <ClosedAnswer subject={activity.subject} type={activity.type} value={value.answer} onChange={changeAnswer}/> : <MathAnswerField label="Tu respuesta" subject={activity.subject} multiline rows={5} maxLength={20000} value={value.answer} onChange={changeAnswer} allowExpressions/>}
       </fieldset>
       <PreviousWork value={value} subject={activity.subject}/>
-      <ResponseSaving subject={activity.subject} activities={data.activities || []} resources={data.resources || []} draft={draft} busy={busy}/>
+      <ResponseSaving subject={activity.subject} activities={data.activities || []} resources={data.resources || []} draft={draft} busy={busy || returning}/>
       {error && <p role="alert" className="error-text">{error}</p>}
-      <div className="sw-classroom-actions">{(activity.type!=="paper" || hasResponse) && <button className="btn primary" disabled={busy || draft.busy || Boolean(draft.conflict) || !hasResponse}>{busy?"Guardando…":canCheck?"Comprobar respuesta":"Guardar respuesta"}<ArrowRight size={17}/></button>}{hints.length>0 && <button type="button" className="btn quiet" disabled={busy || draft.busy || Boolean(draft.conflict) || hintsUsed.length>=hints.length} onClick={()=>{focusHint.current=true;const next=hints.findIndex((_,index)=>!hintsUsed.includes(index));if(next>=0)draft.setValue({hintsUsed:[...hintsUsed,next]})}}><Lightbulb size={17}/>{hintsUsed.length>=hints.length?"Pistas consultadas":hintsUsed.length?"Otra pista":"Ver pista"}</button>}</div>
+      <div className="sw-classroom-actions">{(activity.type!=="paper" || hasResponse) && <button className="btn primary" disabled={busy || returning || draft.busy || Boolean(draft.conflict) || !hasResponse}>{returning?'Volviendo…':busy?"Guardando…":canCheck?"Comprobar respuesta":"Guardar respuesta"}<ArrowRight size={17}/></button>}{hints.length>0 && <button type="button" className="btn quiet" disabled={busy || returning || draft.busy || Boolean(draft.conflict) || hintsUsed.length>=hints.length} onClick={()=>{focusHint.current=true;const next=hints.findIndex((_,index)=>!hintsUsed.includes(index));if(next>=0)draft.setValue({hintsUsed:[...hintsUsed,next]})}}><Lightbulb size={17}/>{hintsUsed.length>=hints.length?"Pistas consultadas":hintsUsed.length?"Otra pista":"Ver pista"}</button>}</div>
       {confirmation && <div className={`sw-answer-result ${confirmation.autoResult==="incorrect"?"review":""}`} role="status"><CheckCircle2 size={19}/><div>{confirmation.answer && <strong><MathText subject={activity.subject}>{confirmation.answer}</MathText></strong>}<p>{confirmation.autoResult==="correct"?"Respuesta correcta.":confirmation.autoResult==="incorrect"?"Revisa el resultado. Puedes intentarlo de nuevo.":"Respuesta guardada. La revisaremos en clase."}</p></div></div>}
       {hintsUsed.length>0 && <section className="sv-hint-list" aria-label="Pistas consultadas">{hintsUsed.map((index,position)=><div key={index} ref={position===hintsUsed.length-1?lastHint:undefined} tabIndex={-1}><span>Pista {index+1}</span><p><MathText subject={activity.subject}>{hints[index]}</MathText></p></div>)}</section>}
     </form>
     {latest?.reviewStatus==="reviewed" && latest.feedback && <section className="sw-feedback"><h2 className="sw-section-title">Revisión</h2><p className="sv-preline"><MathText subject={activity.subject}>{latest.feedback}</MathText></p></section>}
     {responses.length>0 && <details ref={historySection} id="activity-history" tabIndex={-1} className="sw-simple-details sw-history-collapse"><summary>Respuestas anteriores ({responses.length})</summary><ResponseHistory responses={responses} activities={data.activities || []} resources={data.resources || []} currentActivityId={activity.id} currentAssignmentId={assignment?.id}/></details>}
     {showDetails && <details className="sw-simple-details sw-exercise-details"><summary>Sobre este ejercicio</summary>{activity.objective && <p><MathText subject={activity.subject}>{activity.objective}</MathText></p>}{activity.materials && <p className="muted"><MathText subject={activity.subject}>{Array.isArray(activity.materials)?activity.materials.join(" · "):activity.materials}</MathText></p>}{activity.explanation && <p className="sv-preline"><MathText subject={activity.subject}>{activity.explanation}</MathText></p>}</details>}
+    <ExerciseFeedbackToast feedback={feedback} onDismiss={()=>setFeedback(null)}/>
   </div>;
 }
 

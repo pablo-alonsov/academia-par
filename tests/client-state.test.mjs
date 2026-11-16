@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {registerHooks} from 'node:module';
 import {applyDataPatch} from '../lib/data-patch.ts';
-import {authorizedFetch,setSessionExpiryHandler,setSessionAccessCheck,invalidateSessionRequests,setRequestProfile} from '../lib/client-request.ts';
 import {examSubjectsForStudent,retainedExamSubject} from '../lib/exam-subjects.ts';
+import {setResultVersion} from '../lib/client-result-state.ts';
+registerHooks({resolve(specifier,context,next){if(specifier==='./client-result-state'&&context.parentURL?.endsWith('/lib/client-request.ts'))return next(new URL('./client-result-state.ts',context.parentURL).href,context);return next(specifier,context)}});
+const {authorizedFetch,setSessionExpiryHandler,setSessionAccessCheck,invalidateSessionRequests,setRequestProfile}=await import('../lib/client-request.ts');
 
 test('subject options match each pupil and preserve existing custom subjects',()=>{
   const names=['Lengua','Física y química','Matemáticas'];
@@ -135,4 +138,24 @@ test('a temporary network failure preserves access and never retries in the back
     await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),error=>error.status===0);
     assert.equal(calls,1);assert.equal(expired,0);
   }finally{globalThis.fetch=original;resetAccess()}
+});
+
+test('writes carry the authoritative result version and a reset rejection never replays old work',async()=>{
+  const original=globalThis.fetch,previousWindow=globalThis.window;let calls=0,received,changes=0;active();setResultVersion('reset-current');
+  globalThis.window=new EventTarget();globalThis.window.addEventListener('arp:results-reset',()=>changes++);
+  globalThis.fetch=async(url,options)=>{calls++;received=options.headers.get('X-ARP-Result-Version');return new Response(JSON.stringify({code:'RESULTS_RESET'}),{status:409})};
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'old test work'}),error=>error.status===409&&error.code==='RESULTS_RESET');
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'old test work'}),error=>error.status===401);
+    assert.equal(received,'reset-current');assert.equal(calls,1);assert.equal(changes,1);
+  }finally{globalThis.fetch=original;if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;resetAccess();setResultVersion('initial')}
+});
+
+test('a result generation changed during a read discards its stale response',async()=>{
+  const original=globalThis.fetch;let finish;active();setResultVersion('reset-before');
+  globalThis.fetch=async()=>new Promise(resolve=>{finish=resolve});
+  try{
+    const pending=authorizedFetch('/api/data');setResultVersion('reset-after');finish(new Response(JSON.stringify({responses:['old work']})));
+    await assert.rejects(pending,error=>error.status===409&&/reiniciado/.test(error.message));
+  }finally{globalThis.fetch=original;resetAccess();setResultVersion('initial')}
 });
