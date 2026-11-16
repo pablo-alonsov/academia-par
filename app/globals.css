@@ -182,3 +182,68 @@ html body :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font
 html body select:not([multiple]):is(:not([size]),[size="0"],[size="1"]){-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:var(--native-select-arrow);background-repeat:no-repeat;background-size:16px 16px;background-position:right 16px center;padding-inline-end:44px}
 html[dir=rtl] body select:not([multiple]):is(:not([size]),[size="0"],[size="1"]){background-position:left 16px center}
 @media(forced-colors:active){html body select:not([multiple]):is(:not([size]),[size="0"],[size="1"]){-webkit-appearance:auto;-moz-appearance:auto;appearance:auto;background-image:none;padding-inline-end:12px;forced-color-adjust:auto}}
+
+/* Keep the sidebar's icon anchors and vertical rhythm stable while its rail changes width.
+   is-drawer-layout follows the same viewport rule as the focus/scroll handling in Academy. */
+.app-shell{--sidebar-motion:380ms;--sidebar-ease:cubic-bezier(.22,1,.36,1)}
+.app-shell:not(.is-drawer-layout){grid-template-columns:260px minmax(0,1fr);transition:grid-template-columns var(--sidebar-motion) var(--sidebar-ease)}
+.app-shell.is-collapsed:not(.is-drawer-layout){grid-template-columns:84px minmax(0,1fr)}
+.app-shell .sidebar{overflow-x:hidden}
+.app-shell .sidebar .brand-mark{flex:0 0 37px}
+.app-shell .sidebar>nav,.app-shell .sidebar-bottom,.app-shell .workspace-label{flex-shrink:0}
+.app-shell:not(.is-drawer-layout) .sidebar{padding-inline:18px}
+.app-shell:not(.is-drawer-layout) .sidebar .brand{padding-inline:8px;flex:0 0 44px;min-width:0}
+.app-shell:not(.is-drawer-layout) .sidebar .brand>span:last-child,
+.app-shell:not(.is-drawer-layout) .sidebar .nav-item>span,
+.app-shell:not(.is-drawer-layout) .sidebar .collapse-btn>span{
+ display:block;flex-shrink:0;white-space:nowrap;opacity:1;visibility:visible;transform:translateX(0);
+ transition:opacity 160ms ease 100ms,transform var(--sidebar-motion) var(--sidebar-ease),visibility 0s;
+}
+.app-shell:not(.is-drawer-layout) .workspace-label{
+ display:block;height:18px;min-height:18px;line-height:18px;margin:42px 0 13px;white-space:nowrap;
+ opacity:1;visibility:visible;transition:opacity 160ms ease 100ms,visibility 0s;
+}
+.app-shell:not(.is-drawer-layout) .sidebar>nav{margin-top:0}
+.app-shell:not(.is-drawer-layout) .sidebar .nav-item{
+ justify-content:flex-start;gap:12px;padding-inline:13px;min-width:0;overflow:hidden;white-space:nowrap;
+}
+.app-shell:not(.is-drawer-layout) .sidebar .nav-item>svg{width:21px;height:21px;flex:0 0 21px}
+.app-shell:not(.is-drawer-layout) .sidebar .nav-item>i{display:block;flex-shrink:0;transition:opacity 120ms ease}
+.app-shell .sidebar .collapse-btn{
+ display:flex;width:100%;gap:12px;min-height:48px;padding:10px 13px;border-radius:10px;
+ align-items:center;justify-content:flex-start;text-align:left;white-space:nowrap;overflow:hidden;
+ transition:background 200ms ease,color 200ms ease;
+}
+.app-shell .sidebar .collapse-btn:hover{background:var(--surface2);color:var(--text)}
+.app-shell .sidebar .collapse-btn>svg{width:21px;height:21px;flex:0 0 21px}
+.app-shell.is-collapsed:not(.is-drawer-layout) .sidebar .brand>span:last-child,
+.app-shell.is-collapsed:not(.is-drawer-layout) .sidebar .nav-item>span,
+.app-shell.is-collapsed:not(.is-drawer-layout) .sidebar .collapse-btn>span{
+ opacity:0;visibility:hidden;transform:translateX(-8px);
+ transition:opacity 90ms ease,transform var(--sidebar-motion) var(--sidebar-ease),visibility 0s 90ms;
+}
+.app-shell.is-collapsed:not(.is-drawer-layout) .workspace-label{
+ opacity:0;visibility:hidden;transition:opacity 90ms ease,visibility 0s 90ms;
+}
+.app-shell.is-collapsed:not(.is-drawer-layout) .sidebar .nav-item>i{opacity:0}
+
+/* Drawer controls remain available on phones, tablets and short landscape screens. */
+.app-shell.is-drawer-layout{grid-template-columns:minmax(0,1fr);transition:none}
+.app-shell.is-drawer-layout .sidebar{
+ position:fixed;left:0;top:0;width:min(300px,calc(100vw - 48px));
+ padding-left:max(18px,env(safe-area-inset-left));padding-right:18px;transform:translateX(-100%);visibility:hidden;
+ transition:transform var(--sidebar-motion) var(--sidebar-ease),visibility 0s var(--sidebar-motion);
+}
+.app-shell.is-drawer-layout .sidebar.is-open{transform:translateX(0);visibility:visible;transition-delay:0s}
+.app-shell.is-drawer-layout .sidebar .brand{padding-inline:8px}
+.app-shell.is-drawer-layout .sidebar .brand>span:last-child,
+.app-shell.is-drawer-layout .sidebar .workspace-label,
+.app-shell.is-drawer-layout .sidebar .nav-item>span,
+.app-shell.is-drawer-layout .sidebar .collapse-btn>span{display:block;opacity:1;visibility:visible;transform:none}
+.app-shell.is-drawer-layout .sidebar>nav{margin-top:0}
+.app-shell.is-drawer-layout .sidebar .nav-item{justify-content:flex-start;white-space:normal;font-size:max(var(--arp-font-min,0px),calc(15px * var(--arp-font-scale,1)));min-height:50px}
+.app-shell.is-drawer-layout .sidebar .nav-item>i{display:block}
+.app-shell.is-drawer-layout .sidebar-bottom{display:grid;gap:8px;padding-top:20px}
+.app-shell.is-drawer-layout .sidebar .collapse-btn{border:1px solid var(--line);background:var(--surface2)}
+.app-shell.is-drawer-layout .sidebar .collapse-btn:hover{background:var(--primary-soft);color:var(--primary)}
+@media(prefers-reduced-motion:reduce){.app-shell,.app-shell .sidebar,.app-shell .sidebar *{transition:none!important}}

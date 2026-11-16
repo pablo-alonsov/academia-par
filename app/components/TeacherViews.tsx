@@ -17,6 +17,7 @@ import {ACTIVITY_SUPPORT_OPTIONS,activitySupportLabel,activitySupportMode} from 
 import {pdfFileForResource} from '@/lib/resource-files';
 import TeacherEmailNotifications from './TeacherEmailNotifications';
 import MathText from './MathText';
+import {usePlatformNavigation} from './PlatformNavigation';
 const STATES=['Por empezar','Lo estamos trabajando','Lo hago con ayuda','Lo hago sola','Lo he recordado días después'];
 const TYPES:any={choice:'Selección',numeric:'Numérica',fraction:'Fracción',text:'Texto con respuesta exacta',open:'Respuesta abierta',paper:'En papel',external:'Recurso externo'};
 const today=madridToday;
@@ -26,14 +27,19 @@ function Field({label,children,hint}:any){return <label className="field"><span 
 function Empty({icon:Icon=NotebookPen,title,children}:any){return <div className="empty-state"><Icon size={30}/><h3>{title}</h3><p>{children}</p></div>}
 function worksheetForResource(id:string,activities:any[]){return activities.filter((activity:any)=>activity.resourceId===id&&['paper','external'].includes(activity.type)).sort((a:any,b:any)=>Number(b.type==='paper')-Number(a.type==='paper')||String(a.id).localeCompare(String(b.id)))[0];}
 export default function TeacherViews({data,tab,act,notify}:any){
+ const navigation=usePlatformNavigation(),sessionSnapshot=useRef<any>(null);
+ const sessionId=navigation.route.detail?.kind==='teacher-session'?navigation.route.detail.id:'';
+ const session=sessionId?(data.sessions.find((s:any)=>s.id===sessionId)||(sessionSnapshot.current?.id===sessionId?sessionSnapshot.current:null)):null;
  const [bankLimit,setBankLimit]=useState(12);
  useEffect(()=>setBankLimit(12),[tab]);
  const [widgetOrder,setWidgetOrder]=useState([0,1,2,3]),[organizing,setOrganizing]=useState(false);
  useEffect(()=>{try{const v=JSON.parse(localStorage.getItem('arp-widget-order')||'[0,1,2,3]');if(v.length===4&&new Set(v).size===4&&v.every((x:number)=>[0,1,2,3].includes(x)))setWidgetOrder(v)}catch{}},[]);
  const reorder=(from:number,to:number)=>setWidgetOrder(order=>{const next=[...order];next.splice(to,0,next.splice(from,1)[0]);try{localStorage.setItem('arp-widget-order',JSON.stringify(next))}catch{}return next});
- const [modal,setModal]=useState<any>(null),[session,setSession]=useState<any>(null),[filter,setFilter]=useState(''),[subject,setSubject]=useState(''),[studentFilter,setStudentFilter]=useState(''),[supportFilter,setSupportFilter]=useState(''),[week,setWeek]=useState(trackingToday),[view,setView]=useState('Semana'),[busy,setBusy]=useState(false);
+ const [modal,setModal]=useState<any>(null),[filter,setFilter]=useState(''),[subject,setSubject]=useState(''),[studentFilter,setStudentFilter]=useState(''),[supportFilter,setSupportFilter]=useState(''),[week,setWeek]=useState(trackingToday),[view,setView]=useState('Semana'),[busy,setBusy]=useState(false);
  useEffect(()=>setBankLimit(12),[filter,subject,studentFilter,supportFilter]);
  const pageHeadingRef=useRef<HTMLHeadingElement>(null),sessionReturnId=useRef<string|null>(null),restoreSessionFocus=useRef(false);
+ const previousSessionId=useRef(sessionId);
+ useEffect(()=>{if(previousSessionId.current&&!sessionId)restoreSessionFocus.current=true;previousSessionId.current=sessionId},[sessionId]);
  useEffect(()=>{if(session||!restoreSessionFocus.current)return;restoreSessionFocus.current=false;const root=pageHeadingRef.current?.closest('.teacher-views');const trigger=Array.from(root?.querySelectorAll<HTMLButtonElement>('button[data-session-open]')||[]).find(button=>button.dataset.sessionOpen===sessionReturnId.current&&!button.disabled);if(trigger){trigger.focus()}else{pageHeadingRef.current?.focus({preventScroll:true});window.scrollTo({top:0,left:0,behavior:'auto'})}},[session]);
  const run=async(a:string,d:any,msg='Cambios guardados')=>{try{setBusy(true);const r=await act(a,d);notify(msg);return r}catch(e:any){notify(e.message);throw e}finally{setBusy(false)}};
  const student=(id:string)=>data.students.find((s:any)=>s.id===id),subjects=data.subjects||[];
@@ -41,9 +47,9 @@ export default function TeacherViews({data,tab,act,notify}:any){
  const sessions=(data.sessions||[]).filter((s:any)=>(view==='Todas'&&isTrackingDate(s.date))||(s.date>=monday&&s.date<=datePlus(monday,3))).sort((a:any,b:any)=>a.date.localeCompare(b.date)||a.studentId.localeCompare(b.studentId));
  const reviews=data.responses.filter((r:any)=>r.reviewStatus!=='reviewed'),doubts=data.doubts.filter((d:any)=>!d.resolvedAt&&d.status!=='resolved'),exams=data.exams.filter((e:any)=>e.date>=today()).sort((a:any,b:any)=>a.date.localeCompare(b.date));
  const newSession=(s?:any)=>setModal({type:'session',item:{id:crypto.randomUUID(),studentId:s?.studentId||s?.id||'rocio',date:trackingToday(),duration:60,status:'por preparar',objective:s?.nextStep||'',subject:s?.subject||'',timings:[5,10,20,20,5],...s}});
- const openSession=(s:any)=>{sessionReturnId.current=s.id;restoreSessionFocus.current=false;setSession(s)};
- useEffect(()=>{setFilter('');setSubject('');setStudentFilter('');setSupportFilter('');setSession(null)},[tab]);
- if(session)return <SessionEditor key={session.id} initial={session} data={data} act={act} notify={notify} backLabel={tab==="Alumnas"?"Volver a Alumnas":"Volver a mi semana"} back={()=>{restoreSessionFocus.current=true;setSession(null)}}/>;
+ const openSession=(s:any)=>{sessionReturnId.current=s.id;sessionSnapshot.current=s;restoreSessionFocus.current=false;void navigation.navigate({tab,detail:{kind:'teacher-session',id:s.id}})};
+ useEffect(()=>{setFilter('');setSubject('');setStudentFilter('');setSupportFilter('');setModal(null)},[tab]);
+ if(session)return <SessionEditor key={session.id} initial={session} data={data} act={act} notify={notify} backLabel={tab==="Alumnas"?"Volver a Alumnas":"Volver a mi semana"} back={()=>{restoreSessionFocus.current=true;navigation.back()}}/>;
  const bank=data.activities.filter((a:any)=>(!filter||`${a.title} ${a.objective}`.toLowerCase().includes(filter.toLowerCase()))&&(!subject||a.subject===subject)&&(!studentFilter||a.studentId===studentFilter||a.suggestedStudentIds?.includes(studentFilter)||(!a.studentId&&!a.suggestedStudentIds?.length))&&(!supportFilter||activitySupportMode(a.supportMode)===supportFilter));
  const resources=data.resources.filter((r:any)=>(!filter||`${r.title} ${r.objective}`.toLowerCase().includes(filter.toLowerCase()))&&(!subject||r.subject===subject)&&(!studentFilter||r.studentId===studentFilter||r.suggestedStudentIds?.includes(studentFilter)||(!r.studentId&&!r.suggestedStudentIds?.length))&&(!supportFilter||activitySupportMode(r.supportMode)===supportFilter));
  const visibleBank=tab==='Banco de actividades'?bank:resources;
@@ -141,7 +147,7 @@ function SessionEditor({initial,data,act,notify,back,backLabel="Volver a mi sema
    }
    resumePending.current=false;setResuming(false);
   };
-  const onBeforeNavigation=(event:Event)=>{const jobs=(event as CustomEvent<{jobs:Promise<any>[]}>).detail?.jobs;if(!Array.isArray(jobs))return;clearTimeout(timer.current);persistPending();jobs.push((revision.current>savedRevision.current&&latest.current.status!=='realizada'?save(latest.current):queue.current).then((result:any)=>{if(result?.localNotesRetained){queue.current=Promise.resolve(null);throw Error('La sesión ya está cerrada. Revisa el borrador local conservado antes de continuar.');}return result}))};
+  const onBeforeNavigation=(event:Event)=>{const jobs=(event as CustomEvent<{jobs:Promise<any>[]}>).detail?.jobs;if(!Array.isArray(jobs))return;clearTimeout(timer.current);persistPending();jobs.push((revision.current>savedRevision.current&&latest.current.status!=='realizada'?save(latest.current):queue.current).then((result:any)=>{if(result?.localNotesRetained){queue.current=Promise.resolve(null);throw Error('La sesión ya está cerrada. Revisa el borrador local conservado antes de continuar.');}if(result?.conflict||result?.paused||recoveryRef.current||resumePending.current)throw Error('Revisa el guardado de la sesión antes de cambiar de pantalla.');return result}))};
   const onUnload=(event:BeforeUnloadEvent)=>{persistPending();if(revision.current>savedRevision.current||closeDraftPending.current){event.preventDefault();event.returnValue=''}};
   window.addEventListener('arp:before-navigation',onBeforeNavigation);window.addEventListener('arp:resume-ready',ready);window.addEventListener('beforeunload',onUnload);window.addEventListener('pagehide',hide);document.addEventListener('visibilitychange',visibility);
   return()=>{mounted.current=false;clearTimeout(timer.current);persistPending();window.removeEventListener('arp:before-navigation',onBeforeNavigation);window.removeEventListener('arp:resume-ready',ready);window.removeEventListener('beforeunload',onUnload);window.removeEventListener('pagehide',hide);document.removeEventListener('visibilitychange',visibility);if(revision.current>savedRevision.current&&latest.current.status!=='realizada'&&!resumePending.current&&!recoveryRef.current){save({...latest.current}).catch((e:any)=>{if(e.status!==401&&e.status!==409)notify(`No se han podido guardar los últimos cambios: ${e.message}`)})}};

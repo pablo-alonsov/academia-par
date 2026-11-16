@@ -15,6 +15,7 @@ import { responsesForActivity, responsesForResource, linkedResourceActivity } fr
 import { hasActivitySubmission, type HomeWork } from "./student-home";
 import { pendingTeacherAssignments, type PendingTeacherWork } from "./student-assignments";
 import { pdfFileForResource } from "@/lib/resource-files";
+import { usePlatformNavigation } from './PlatformNavigation';
 import "./student.css";
 import "./student-simple.css";
 
@@ -46,6 +47,7 @@ function AssignedActivityCard({ work, draft, sequence, onOpen }: { work: Pending
 }
 
 export default function StudentViews({ data, profile, tab, act, notify, onNavigate, personalizationRequested, onPersonalizationOpened }: Props) {
+  const navigation = usePlatformNavigation(), detail = navigation.route.detail;
   const student = (data.students || []).find((item: Item) => item.id === profile) || { id: profile, name: profile === "rocio" ? "Rocío" : "Alejandra", priorities: [] };
   const activities: Item[] = (data.activities || []).filter((item: Item) => item.studentId ? item.studentId === profile : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(profile));
   const resources: Item[] = (data.resources || []).filter((item: Item) => item.studentId ? item.studentId === profile : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(profile));
@@ -55,7 +57,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const sessions: Item[] = (data.sessions || []).filter((item: Item) => item.studentId === profile && item.status === "realizada" && isTrackingDate(item.date)).sort((a: Item, b: Item) => b.date.localeCompare(a.date));
   const doubts: Item[] = (data.doubts || []).filter((item: Item) => item.studentId === profile);
   const exams: Item[] = (data.exams || []).filter((item: Item) => item.studentId === profile && item.date >= new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" })).sort((a: Item, b: Item) => a.date.localeCompare(b.date));
-  const [activityId, setActivityId] = useState(""), [assignmentId, setAssignmentId] = useState(""), [sessionId, setSessionId] = useState(""), [resourceId, setResourceId] = useState("");
+  const activityId = detail?.kind === 'activity' ? detail.id : '', assignmentId = detail?.kind === 'activity' ? detail.assignmentId || '' : '', sessionId = detail?.kind === 'student-session' ? detail.id : '', resourceId = detail?.kind === 'resource' ? detail.id : '';
   const [question, setQuestion] = useState(""), [asking, setAsking] = useState(false), [questionBusy, setQuestionBusy] = useState(false), [questionError, setQuestionError] = useState("");
   const [questionId, setQuestionId] = useState(() => crypto.randomUUID());
   const localQuestions = useStudentLocalForms(profile, "question"), questionAttempted = useRef(false);
@@ -70,8 +72,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const activityReturn = useRef({ top: 0, id: "", resourceId: "", sourceAssignmentId: "", assignmentIndex: -1, section: "exercises" as "exercises" | "resources" }), resourceReturn = useRef({ top: 0, id: "", section: "exercises" as "exercises" | "resources" }), sessionReturn = useRef({ top: 0, id: "" }), sessionHeading = useRef<HTMLHeadingElement>(null);
   const drafts: Item[] = useMemo(() => studentDrafts(profile, data.drafts || []), [profile, data.drafts, localVersion]);
   useEffect(() => { const refresh = () => setLocalVersion(value => value + 1), reviews = () => setReadVersion(value => value + 1); window.addEventListener("arp:drafts-changed", refresh); window.addEventListener("storage", refresh); window.addEventListener("arp-review-read-changed", reviews); initializeReadState(profile, data.responses || [], data.doubts || []); return () => { window.removeEventListener("arp:drafts-changed", refresh); window.removeEventListener("storage", refresh); window.removeEventListener("arp-review-read-changed", reviews); }; }, [profile]);
-  useEffect(() => { setActivityId(""); setAssignmentId(""); setResourceId(""); setSessionId(""); setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); setPathLimit(5); setReturnActivity(""); }, [tab, profile]);
-  useEffect(() => { if (personalizationRequested) { setActivityId(""); setAssignmentId(""); setResourceId(""); setSessionId(""); } }, [personalizationRequested]);
+  useEffect(() => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); setPathLimit(5); setReturnActivity(""); }, [tab, profile]);
   useEffect(() => { if (sessionId) sessionHeading.current?.focus({ preventScroll: true }); }, [sessionId]);
   const pendingWork = pendingTeacherAssignments(profile, assignments, activities, responses, student.mainActivityId);
   const pendingActivityIds = new Set(pendingWork.map(work => work.activity.id));
@@ -82,25 +83,36 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const draftFor = (id: string) => drafts.find(item => item.activityId === id) || drafts.find(item => item.resourceId && item.resourceId === activities.find(activity => activity.id === id)?.resourceId);
   const resourceActivity = (id: string, preferred?: string) => linkedResourceActivity(id, profile, activities, assignments, preferred);
   const draftForResource = (id: string) => drafts.find(item => item.activityId === resourceActivity(id)?.id) || drafts.find(item => item.resourceId === id);
-  const openActivity = (activity: Item, assignment = assignmentFor(activity.id), fromResourceId = "", sourceAssignmentId = "") => { activityReturn.current = { id: activity.id, top: window.scrollY, resourceId: fromResourceId, sourceAssignmentId, assignmentIndex: sourceAssignmentId ? pendingWork.findIndex(work => work.assignment.id === sourceAssignmentId) : -1, section: practiceSection }; setActivityId(activity.id); setAssignmentId(assignment?.id || ""); window.scrollTo({ top: 0, behavior: "auto" }); };
+  const openActivity = (activity: Item, assignment = assignmentFor(activity.id), fromResourceId = "", sourceAssignmentId = "") => { activityReturn.current = { id: activity.id, top: window.scrollY, resourceId: fromResourceId, sourceAssignmentId, assignmentIndex: sourceAssignmentId ? pendingWork.findIndex(work => work.assignment.id === sourceAssignmentId) : -1, section: practiceSection }; void navigation.navigate({tab,detail:{kind:'activity',id:activity.id,assignmentId:assignment?.id || '',source:practiceSection,sourceAssignmentId}}); };
   const restoreResourceCard = (id: string, top: number) => { requestAnimationFrame(() => { const target = document.querySelector<HTMLElement>(`[data-resource-id="${CSS.escape(id)}"]`); if (target) { revealStudentTarget(target); target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "auto" }); } else window.scrollTo({ top, behavior: "auto" }); }); };
-  const closeActivity = () => {
+  const restoreActivity = () => {
     const previous = activityReturn.current, id = previous.id;
     if (tab === "Practicar" && previous.sourceAssignmentId) {
-      setActivityId("");
       requestAnimationFrame(() => { const remaining = pendingWork.find(work => work.assignment.id === previous.sourceAssignmentId) || pendingWork[Math.max(0, Math.min(previous.assignmentIndex, pendingWork.length - 1))]; const target = remaining ? document.querySelector<HTMLElement>(`[data-assignment-id="${CSS.escape(remaining.assignment.id)}"]`) : document.querySelector<HTMLElement>('.sv-practice-sections button[aria-pressed="true"]'); if (target) { revealStudentTarget(target); target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "auto" }); } else assignedHeading.current?.focus({ preventScroll: true }); });
       return;
     }
     if (tab === "Practicar" && previous.section === "resources") { setPracticeSection("resources"); setReturnResource(previous.resourceId); setResourceLimit(value => Math.max(value, 5)); }
     else if (tab === "Practicar" && activities.some(item => item.id === id && hasActivitySubmission(item, assignmentFor(id), responses))) { setPracticeMode("Repetir"); setReturnActivity(id); setLimit(5); }
-    setActivityId("");
     if (tab === "Practicar" && previous.section === "resources" && previous.resourceId) restoreResourceCard(previous.resourceId, previous.top);
     else requestAnimationFrame(() => { const target = document.querySelector<HTMLElement>(`[data-activity-id="${CSS.escape(id)}"]`); if (target) { revealStudentTarget(target); target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "auto" }); } else window.scrollTo({ top: previous.top, behavior: "auto" }); });
   };
-  const openSession = (session: Item) => { sessionReturn.current = { id: session.id, top: window.scrollY }; setSessionId(session.id); window.scrollTo({ top: 0, behavior: "auto" }); };
-  const closeSession = () => { setSessionId(""); requestAnimationFrame(() => { const target = document.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(sessionReturn.current.id)}"]`); revealStudentTarget(target); target?.focus({ preventScroll: true }); window.scrollTo({ top: sessionReturn.current.top, behavior: "auto" }); }); };
-  const openResource = (resource: Item, preferred?: string) => { resourceReturn.current = { id: resource.id, top: window.scrollY, section: practiceSection }; const linked = resourceActivity(resource.id, preferred); if (linked) openActivity(linked, assignmentFor(linked.id), resource.id); else setResourceId(resource.id); };
-  const closeResource = () => { const previous = resourceReturn.current; if (tab === "Practicar" && previous.section === "resources") { setPracticeSection("resources"); setReturnResource(previous.id); setResourceLimit(value => Math.max(value, 5)); } setResourceId(""); restoreResourceCard(previous.id, previous.top); };
+  const closeActivity = () => navigation.back();
+  const openSession = (session: Item) => { sessionReturn.current = { id: session.id, top: window.scrollY }; void navigation.navigate({tab,detail:{kind:'student-session',id:session.id}}); };
+  const closeSession = () => navigation.back();
+  const openResource = (resource: Item, preferred?: string) => { resourceReturn.current = { id: resource.id, top: window.scrollY, section: practiceSection }; const linked = resourceActivity(resource.id, preferred); if (linked) openActivity(linked, assignmentFor(linked.id), resource.id); else void navigation.navigate({tab,detail:{kind:'resource',id:resource.id,source:practiceSection}}); };
+  const closeResource = () => navigation.back();
+  const previousDetail = useRef(detail);
+  useEffect(() => {
+    const previous = previousDetail.current; previousDetail.current = detail;
+    if (activityId || sessionId) window.scrollTo({top:0,behavior:'auto'});
+    if (detail?.source) setPracticeSection(detail.source);
+    if (detail?.kind === 'activity' && activityReturn.current.id !== detail.id) activityReturn.current = {id:detail.id,top:0,resourceId:activities.find(item=>item.id===detail.id)?.resourceId || '',sourceAssignmentId:detail.sourceAssignmentId || '',assignmentIndex:pendingWork.findIndex(work=>work.assignment.id===detail.sourceAssignmentId),section:detail.source || 'exercises'};
+    if (detail?.kind === 'resource' && resourceReturn.current.id !== detail.id) resourceReturn.current = {id:detail.id,top:0,section:detail.source || 'resources'};
+    if (detail?.kind === 'student-session' && sessionReturn.current.id !== detail.id) sessionReturn.current = {id:detail.id,top:0};
+    if (previous?.kind === 'activity' && !activityId) restoreActivity();
+    if (previous?.kind === 'resource' && !resourceId) { const returned=resourceReturn.current; if(returned.section==='resources'){setPracticeSection('resources');setReturnResource(returned.id);} restoreResourceCard(returned.id,returned.top); }
+    if (previous?.kind === 'student-session' && !sessionId && !activityId) requestAnimationFrame(() => { const target=document.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(sessionReturn.current.id)}"]`);revealStudentTarget(target);target?.focus({preventScroll:true});window.scrollTo({top:sessionReturn.current.top,behavior:'auto'}); });
+  },[detail]);
   const openHomeWork = (work: HomeWork) => { if (work.activity) openActivity(work.activity, work.assignment, work.resource?.id); else if (work.resource) openResource(work.resource); };
   const showFeedback = (response: Item) => { markRead(profile, [response]); const activity = activities.find(item => item.id === response.activityId); if (activity) openActivity(activity); else { const resource = resources.find(item => item.id === response.resourceId); if (resource) openResource(resource); } };
   const saveQuestion = async (event: React.FormEvent) => { event.preventDefault(); if (!question.trim() || questionBusy) return; questionAttempted.current = true; const copy = localQuestions.save(questionId, { question, attempted: true }); setQuestionBusy(true); setQuestionError(""); try { await act("saveDoubt", { studentId: profile, question: question.trim(), submissionId: questionId }); localQuestions.remove(copy); setQuestion(""); setQuestionId(crypto.randomUUID()); questionAttempted.current = false; setAsking(false); notify("Pregunta guardada."); } catch (reason: any) { setQuestionError(reason.message); } finally { setQuestionBusy(false); } };

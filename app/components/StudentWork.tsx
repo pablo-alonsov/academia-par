@@ -122,7 +122,7 @@ export function StudentActivityDetail({ activity, assignment, student, data, act
       <ResponseStatus response={latest}/>
       {responseContextLabel(latest, activity.id, assignment?.id, data.activities || []) && <p className="muted sv-small">{responseContextLabel(latest, activity.id, assignment?.id, data.activities || [])}</p>}
       {latest.feedback && <p className="sv-preline">{latest.feedback}</p>}
-      <a className="btn quiet" href="#activity-history" onClick={() => { if (historySection.current) historySection.current.open = true; }}>Consultar todos los intentos<ArrowRight size={16}/></a>
+      <a className="btn quiet" href="#activity-history" onClick={event => { event.preventDefault(); if (historySection.current) { historySection.current.open = true; historySection.current.querySelector('summary')?.focus(); historySection.current.scrollIntoView({block:'start',behavior:'auto'}); } }}>Consultar todos los intentos<ArrowRight size={16}/></a>
     </div>}
     <section className="card sv-pad">
       <h2 className="sw-section-title"><FileText size={19}/>Consigna</h2>
