@@ -11,7 +11,8 @@ import { isTrackingDate } from "@/lib/academy-config";
 import StudentHome from "./StudentHome";
 import MathText from "./MathText";
 import { responsesForActivity, responsesForResource, linkedResourceActivity } from "@/lib/resource-work";
-import { hasActivitySubmission, type HomeWork } from "./student-home";
+import { hasCompletedActivity, type HomeWork } from "./student-home";
+import { hasCompletedAssignment } from '@/lib/activity-completion';
 import { pendingTeacherAssignments, type PendingTeacherWork } from "./student-assignments";
 import { pdfFileForResource } from "@/lib/resource-files";
 import { usePlatformNavigation } from './PlatformNavigation';
@@ -72,7 +73,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const pendingWork = pendingTeacherAssignments(profile, assignments, activities, responses, student.mainActivityId);
   const pendingActivityIds = new Set(pendingWork.map(work => work.activity.id));
   const assignedHeading = useRef<HTMLHeadingElement>(null);
-  const assignmentFor = (id: string) => assignments.find(item => item.activityId === id && item.category !== "Opcionales" && !responses.some(response => response.assignmentId === item.id)) || assignments.find(item => item.activityId === id);
+  const assignmentFor = (id: string) => assignments.find(item => item.activityId === id && item.category !== "Opcionales" && !hasCompletedAssignment(activities.find(activity => activity.id === id) || {}, item, responses)) || assignments.find(item => item.activityId === id);
   const historyFor = (id: string) => { const activity = activities.find(item => item.id === id); return activity ? responsesForActivity(activity, profile, responses, activities) : []; };
   const latestFor = (id: string) => historyFor(id)[0];
   const resourceActivity = (id: string, preferred?: string) => linkedResourceActivity(id, profile, activities, assignments, preferred);
@@ -117,7 +118,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const matchingActivities = activities.filter(item => {
     if (pendingActivityIds.has(item.id)) return false;
     if ((item.type === "external" || item.type === "paper") && resources.some(resource => item.id === `act-${resource.id}` && item.resourceId === resource.id)) return false;
-    const assignment = assignmentFor(item.id), completed = hasActivitySubmission(item, assignment, responses);
+    const assignment = assignmentFor(item.id), completed = hasCompletedActivity(item, assignment, responses);
     const modeMatches = practiceMode === "Todos" || practiceMode === "Sin hacer" && !completed || practiceMode === "Hechos" && completed;
     return modeMatches && (!subject || item.subject === subject) && (!skillFilter || item.skillId === skillFilter) && (!searchText(search) || searchText([item.title, item.objective, item.instructions, skills.find(skill => skill.id === item.skillId)?.title].filter(Boolean).join(" ")).includes(searchText(search)));
   }).sort((a, b) => (a.id === student.mainActivityId ? -1 : b.id === student.mainActivityId ? 1 : (practiceMode === "Hechos" ? sortRecent(latestFor(a.id) || {}, latestFor(b.id) || {}) : Number(Boolean(assignmentFor(b.id) && assignmentFor(b.id)?.category !== "Opcionales")) - Number(Boolean(assignmentFor(a.id) && assignmentFor(a.id)?.category !== "Opcionales")) || a.title.localeCompare(b.title, "es"))));
@@ -147,7 +148,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   return <div className={`student-views sv-stack ss-student-lists sv-${profile}`} style={{ "--sv-accent": color.color, "--sv-soft": color.soft } as React.CSSProperties} data-review-version={readVersion}>
     {tab === "Inicio" && <>
       <div className="sv-welcome"><div className="row sw-student-heading"><StudentAvatar student={student}/><div><span className="eyebrow">INICIO</span><h1>{student.name}</h1><p>{student.level}</p></div></div></div>
-      <StudentHome student={student} activities={activities} resources={resources} assignments={assignments} responses={responses} skills={skills} draftOptions={homeDraftOptions} attemptedIds={activities.filter(item => hasActivitySubmission(item, assignmentFor(item.id), responses)).map(item => item.id)} sessions={sessions} latestCheck={latestCheck} exams={exams} feedback={feedback} onOpenWork={openHomeWork} onOpenSession={openSession} onFeedback={showFeedback} onNavigate={onNavigate}/>
+      <StudentHome student={student} activities={activities} resources={resources} assignments={assignments} responses={responses} skills={skills} draftOptions={homeDraftOptions} attemptedIds={activities.filter(item => hasCompletedActivity(item, assignmentFor(item.id), responses)).map(item => item.id)} sessions={sessions} latestCheck={latestCheck} exams={exams} feedback={feedback} onOpenWork={openHomeWork} onOpenSession={openSession} onFeedback={showFeedback} onNavigate={onNavigate}/>
       {(pendingDoubts.length > 0 || answeredDoubts.length > 0 || previousLocalQuestions.length > 0) && <details className="card ss-home-disclosure" onToggle={event => { if (event.currentTarget.open && answeredDoubts.length) markRead(profile, answeredDoubts, "doubt"); }}>
         <summary>Preguntas anteriores{answeredDoubts.some(item => isUnread(profile, item, "doubt")) && <span className="badge blue">Respuesta nueva</span>}</summary>
         <div className="ss-disclosure-content sv-stack">

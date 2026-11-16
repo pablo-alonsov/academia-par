@@ -1,12 +1,20 @@
+import {hasCompletedAssignment, responseCompletesActivity} from '../../lib/activity-completion';
+
 type Item = Record<string, any>;
 export type HomeWork = { key: string; activity?: Item; resource?: Item; assignment?: Item; draft?: Item; copies?: Item[]; kind?: "teacher" | "draft" | "proposal" };
 
 /** A shared resource timeline does not complete a different assignment or adaptation. */
+const teacherAssignment = (activity: Item, assignment: Item | undefined) => Boolean(assignment && (assignment.category !== 'Opcionales' || assignment.id !== `optional:${assignment.studentId}:${activity.id}`));
+const activityResponse = (activity: Item, response: Item) => response.activityId === activity.id || activity.resourceId && activity.id === `act-${activity.resourceId}` && !response.activityId && response.resourceId === activity.resourceId;
 export function submissionForHomeWork(activity: Item, assignment: Item | undefined, responses: Item[]) {
-  if (assignment && assignment.category !== "Opcionales") return responses.find(item => item.assignmentId === assignment.id);
-  return responses.find(item => item.activityId === activity.id || activity.resourceId && activity.id === `act-${activity.resourceId}` && !item.activityId && item.resourceId === activity.resourceId);
+  if (teacherAssignment(activity, assignment)) return responses.find(item => item.assignmentId === assignment!.id);
+  return responses.find(item => activityResponse(activity, item));
 }
 export const hasActivitySubmission = (activity: Item, assignment: Item | undefined, responses: Item[]) => Boolean(submissionForHomeWork(activity, assignment, responses));
+export function hasCompletedActivity(activity: Item, assignment: Item | undefined, responses: Item[]): boolean {
+  if (teacherAssignment(activity, assignment)) return hasCompletedAssignment(activity, assignment!, responses);
+  return responses.some(item => activityResponse(activity, item) && responseCompletesActivity(activity, item));
+}
 
 /** Legacy resource copies remain accessible while a current activity draft takes precedence. */
 export function groupHomeDrafts(options: HomeWork[]): HomeWork[] {
@@ -26,9 +34,9 @@ export function groupHomeDrafts(options: HomeWork[]): HomeWork[] {
 
 export function selectHomeWork({ student, activities, assignments, responses, draftOptions, skills = [], attemptedIds = [] }: { student: Item; activities: Item[]; assignments: Item[]; responses: Item[]; draftOptions: HomeWork[]; skills?: Item[]; attemptedIds?: string[] }) {
   const activityFor = (id: string) => activities.find(item => item.id === id);
-  const assignmentFor = (id: string) => assignments.find(item => item.activityId === id && item.category !== "Opcionales" && !responses.some(response => response.assignmentId === item.id)) || assignments.find(item => item.activityId === id);
+  const assignmentFor = (id: string) => assignments.find(item => item.activityId === id && item.category !== "Opcionales" && !hasCompletedAssignment(activityFor(id) || {}, item, responses)) || assignments.find(item => item.activityId === id);
   const marked = assignments.find(item => item.isMain && activityFor(item.activityId));
-  const pending = assignments.find(item => item.category !== "Opcionales" && activityFor(item.activityId) && !responses.some(response => response.assignmentId === item.id));
+  const pending = assignments.find(item => item.category !== "Opcionales" && activityFor(item.activityId) && !hasCompletedAssignment(activityFor(item.activityId)!, item, responses));
   const teacherActivity = activityFor(student.mainActivityId) || activityFor(marked?.activityId) || activityFor(pending?.activityId);
   const drafts = groupHomeDrafts(draftOptions);
   const activeSkills = new Set(skills.filter(item => item.reviewNeeded || item.state && item.state !== "Por empezar").map(item => item.id));

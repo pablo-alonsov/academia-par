@@ -2,7 +2,8 @@
 import { ArrowRight, BookOpen, CalendarDays } from "lucide-react";
 import { isUnread } from "./StudentReadState";
 import { studentDate } from "./StudentWork";
-import { selectHomeWork, submissionForHomeWork, type HomeWork } from "./student-home";
+import { hasCompletedActivity, selectHomeWork, submissionForHomeWork, type HomeWork } from "./student-home";
+import { isAutomaticallyChecked } from "@/lib/activity-completion";
 import MathText from "./MathText";
 import "./student-simple.css";
 
@@ -24,8 +25,9 @@ export default function StudentHome({ student, activities, resources, assignment
   const material = primary?.activity || primary?.resource;
   const primaryLabel = "Ejercicio";
   const submission = (work: HomeWork) => work.activity ? submissionForHomeWork(work.activity, work.assignment, responses) : undefined;
-  const workLabel = (work: HomeWork) => work.draft ? "Continuar" : work.kind === "proposal" ? "Empezar" : submission(work)?.reviewStatus === "reviewed" ? "Ver revisión" : submission(work) ? "Ver mi trabajo" : "Abrir ejercicio";
-  const primaryStatus = primary?.draft ? "" : primary && submission(primary) ? submission(primary)?.reviewStatus === "reviewed" ? "Revisión disponible." : "Respuesta guardada." : "";
+  const needsRetry = (work: HomeWork) => Boolean(work.activity && isAutomaticallyChecked(work.activity) && !hasCompletedActivity(work.activity, work.assignment, responses) && submission(work)?.autoResult === "incorrect");
+  const workLabel = (work: HomeWork) => needsRetry(work) ? "Reintentar" : work.draft ? "Continuar" : work.kind === "proposal" ? "Empezar" : submission(work)?.reviewStatus === "reviewed" ? "Ver revisión" : submission(work) ? "Ver mi trabajo" : "Abrir ejercicio";
+  const primaryStatus = primary && needsRetry(primary) ? "Pendiente de acertar." : primary?.draft ? "" : primary && submission(primary) ? submission(primary)?.reviewStatus === "reviewed" ? "Revisión disponible." : "Respuesta guardada." : "";
   const otherWork = [...(alternative ? [alternative] : []), ...otherDrafts];
   const feedbackMaterial = featuredFeedback && (activities.find((item: Item) => item.id === featuredFeedback.activityId) || resources.find((item: Item) => item.id === featuredFeedback.resourceId));
   const feedbackTitle = feedbackMaterial?.title || "Trabajo revisado";

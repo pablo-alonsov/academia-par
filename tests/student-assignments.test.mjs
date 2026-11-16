@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {assignmentDueDate,pendingTeacherAssignments} from '../app/components/student-assignments.ts';
+import {registerHooks} from 'node:module';
+registerHooks({resolve(specifier,context,next){if(specifier==='../../lib/activity-completion'&&context.parentURL?.endsWith('/app/components/student-assignments.ts'))return next(new URL('../../lib/activity-completion.ts',context.parentURL).href,context);return next(specifier,context)}});
+const {assignmentDueDate,pendingTeacherAssignments}=await import('../app/components/student-assignments.ts');
 const activity=(id,extra={})=>({id,title:id,suggestedStudentIds:['rocio'],...extra});
 const task=(id,activityId='activity',extra={})=>({id,activityId,studentId:'rocio',category:'Para casa',...extra});
 const list=(assignments,responses=[],activities=[activity('activity')],main)=>pendingTeacherAssignments('rocio',assignments,activities,responses,main);
@@ -38,4 +40,23 @@ test('main activity comes first, then genuine due dates, then stable creation ti
 });
 test('only real calendar due dates can be shown',()=>{
  assert.equal(assignmentDueDate('2026-11-14'),'2026-11-14');assert.equal(assignmentDueDate('2026-02-31'),null);assert.equal(assignmentDueDate('soon'),null);assert.equal(assignmentDueDate(undefined),null);
+});
+
+test('assigned automatic practice stays pending through errors until a correct attempt of that task',()=>{
+ const tasks=[task('first'),task('second')],activities=[activity('activity',{type:'numeric'})];
+ const wrong={id:'wrong',studentId:'rocio',activityId:'activity',assignmentId:'first',autoResult:'incorrect'};
+ assert.deepEqual(list(tasks,[wrong],activities).map(row=>row.assignment.id),['first','second']);
+ assert.deepEqual(list(tasks,[{...wrong,autoResult:null}],activities).map(row=>row.assignment.id),['first','second']);
+ const right={...wrong,id:'right',autoResult:'correct'};
+ assert.deepEqual(list(tasks,[wrong,right],activities).map(row=>row.assignment.id),['second']);
+ assert.deepEqual(list(tasks,[right,wrong],activities).map(row=>row.assignment.id),['second']);
+ assert.deepEqual(list(tasks,[{...right,studentId:'alejandra'}],activities).map(row=>row.assignment.id),['first','second']);
+});
+
+test('teacher optional practice also requires the correct answer in its own assignment',()=>{
+ const tasks=[task('teacher-optional','activity',{category:'Opcionales'})],activities=[activity('activity',{type:'fraction'})];
+ const response={studentId:'rocio',activityId:'activity',assignmentId:'optional:rocio:activity',autoResult:'correct'};
+ assert.equal(list(tasks,[response],activities).length,1);
+ assert.equal(list(tasks,[{...response,assignmentId:'teacher-optional',autoResult:'incorrect'}],activities).length,1);
+ assert.equal(list(tasks,[{...response,assignmentId:'teacher-optional'}],activities).length,0);
 });

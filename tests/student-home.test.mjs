@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {groupHomeDrafts,hasActivitySubmission,selectHomeWork,submissionForHomeWork} from '../app/components/student-home.ts';
+import {registerHooks} from 'node:module';
+registerHooks({resolve(specifier,context,next){if(specifier==='../../lib/activity-completion'&&context.parentURL?.endsWith('/app/components/student-home.ts'))return next(new URL('../../lib/activity-completion.ts',context.parentURL).href,context);return next(specifier,context)}});
+const {groupHomeDrafts,hasActivitySubmission,hasCompletedActivity,selectHomeWork,submissionForHomeWork}=await import('../app/components/student-home.ts');
 const activity=(id,extra={})=>({id,title:id,subject:'Lengua',duration:5,supportMode:'independent',...extra});
 const select=extra=>selectHomeWork({student:{},activities:[],assignments:[],responses:[],draftOptions:[],...extra});
 
@@ -52,4 +54,38 @@ test('a teacher choice retains the saved target key and does not duplicate its d
  const selected=activity('selected');
  const result=select({student:{mainActivityId:'selected'},activities:[selected],draftOptions:[{key:'resource:original-target',activity:selected,draft:{resourceId:'original-target'}}]});
  assert.equal(result.primary.key,'resource:original-target');assert.equal(result.alternative,null);assert.deepEqual(result.otherDrafts,[]);
+});
+
+test('incorrect automatic attempts stay pending without losing their submission history',()=>{
+ const work=activity('fractions',{type:'fraction'}),wrong={id:'wrong',activityId:'fractions',autoResult:'incorrect'};
+ assert.equal(hasActivitySubmission(work,undefined,[wrong]),true);
+ assert.equal(submissionForHomeWork(work,undefined,[wrong]),wrong);
+ assert.equal(hasCompletedActivity(work,undefined,[wrong]),false);
+ const right={id:'right',activityId:'fractions',autoResult:'correct'};
+ assert.equal(hasCompletedActivity(work,undefined,[right,wrong]),true);
+ assert.equal(hasCompletedActivity(work,undefined,[wrong,right]),true);
+ assert.equal(hasCompletedActivity(work,undefined,[{...wrong,autoResult:null}]),false);
+ assert.equal(hasCompletedActivity(work,undefined,[{...right,activityId:'another'}]),false);
+});
+
+test('an incorrect assigned exercise remains the home priority until answered correctly',()=>{
+ const work=activity('assigned',{type:'numeric'}),fresh=activity('fresh');
+ const input={activities:[work,fresh],assignments:[{id:'task',activityId:'assigned',category:'Para casa'}],responses:[{assignmentId:'task',activityId:'assigned',autoResult:'incorrect'}]};
+ assert.equal(select(input).primary.activity.id,'assigned');
+ assert.equal(select({...input,responses:[...input.responses,{assignmentId:'task',activityId:'assigned',autoResult:'correct'}]}).primary.activity.id,'fresh');
+});
+
+test('a correct earlier practice never completes a new teacher optional assignment',()=>{
+ const work=activity('fractions',{type:'fraction'}),task={id:'teacher-optional',studentId:'rocio',category:'Opcionales'};
+ const earlier={studentId:'rocio',activityId:'fractions',assignmentId:'optional:rocio:fractions',autoResult:'correct'};
+ assert.equal(hasCompletedActivity(work,task,[earlier]),false);
+ assert.equal(submissionForHomeWork(work,task,[earlier]),undefined);
+ assert.equal(hasCompletedActivity(work,{id:'optional:rocio:fractions',studentId:'rocio',category:'Opcionales'},[earlier]),true);
+ assert.equal(hasCompletedActivity(work,task,[{...earlier,assignmentId:task.id}]),true);
+});
+
+test('open submitted work remains available for review without requiring an automatic result',()=>{
+ const work=activity('writing',{type:'open'}),answer={activityId:'writing',autoResult:null,reviewStatus:'pending'};
+ assert.equal(hasCompletedActivity(work,undefined,[answer]),true);
+ assert.equal(submissionForHomeWork(work,undefined,[answer]),answer);
 });
