@@ -2,8 +2,7 @@
 import { ArrowRight, BookOpen, CalendarDays } from "lucide-react";
 import { isUnread } from "./StudentReadState";
 import { studentDate } from "./StudentWork";
-import { hasCompletedActivity, selectHomeWork, submissionForHomeWork, type HomeWork } from "./student-home";
-import { isAutomaticallyChecked } from "@/lib/activity-completion";
+import { needsActivityRetry, selectHomeWork, submissionForHomeWork, type HomeWork } from "./student-home";
 import MathText from "./MathText";
 import "./student-simple.css";
 
@@ -25,7 +24,7 @@ export default function StudentHome({ student, activities, resources, assignment
   const material = primary?.activity || primary?.resource;
   const primaryLabel = "Ejercicio";
   const submission = (work: HomeWork) => work.activity ? submissionForHomeWork(work.activity, work.assignment, responses) : undefined;
-  const needsRetry = (work: HomeWork) => Boolean(work.activity && isAutomaticallyChecked(work.activity) && !hasCompletedActivity(work.activity, work.assignment, responses) && submission(work)?.autoResult === "incorrect");
+  const needsRetry = (work: HomeWork) => Boolean(work.activity && needsActivityRetry(work.activity, work.assignment, responses));
   const workLabel = (work: HomeWork) => needsRetry(work) ? "Reintentar" : work.draft ? "Continuar" : work.kind === "proposal" ? "Empezar" : submission(work)?.reviewStatus === "reviewed" ? "Ver revisión" : submission(work) ? "Ver mi trabajo" : "Abrir ejercicio";
   const primaryStatus = primary && needsRetry(primary) ? "Pendiente de acertar." : primary?.draft ? "" : primary && submission(primary) ? submission(primary)?.reviewStatus === "reviewed" ? "Revisión disponible." : "Respuesta guardada." : "";
   const otherWork = [...(alternative ? [alternative] : []), ...otherDrafts];

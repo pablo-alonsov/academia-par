@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 registerHooks({resolve(specifier,context,next){if(specifier==='../../lib/activity-completion'&&context.parentURL?.endsWith('/app/components/student-home.ts'))return next(new URL('../../lib/activity-completion.ts',context.parentURL).href,context);return next(specifier,context)}});
-const {groupHomeDrafts,hasActivitySubmission,hasCompletedActivity,selectHomeWork,submissionForHomeWork}=await import('../app/components/student-home.ts');
+const {groupHomeDrafts,hasActivitySubmission,hasCompletedActivity,needsActivityRetry,selectHomeWork,submissionForHomeWork}=await import('../app/components/student-home.ts');
 const activity=(id,extra={})=>({id,title:id,subject:'Lengua',duration:5,supportMode:'independent',...extra});
 const select=extra=>selectHomeWork({student:{},activities:[],assignments:[],responses:[],draftOptions:[],...extra});
 
@@ -88,4 +88,27 @@ test('open submitted work remains available for review without requiring an auto
  const work=activity('writing',{type:'open'}),answer={activityId:'writing',autoResult:null,reviewStatus:'pending'};
  assert.equal(hasCompletedActivity(work,undefined,[answer]),true);
  assert.equal(submissionForHomeWork(work,undefined,[answer]),answer);
+});
+
+test('retry distinguishes failed practice from unstarted, ungraded and completed exercises',()=>{
+ const work=activity('fractions',{type:'fraction'}),wrong={activityId:'fractions',autoResult:'incorrect',reviewStatus:'reviewed'};
+ assert.equal(needsActivityRetry(work,undefined,[]),false);
+ assert.equal(needsActivityRetry(work,undefined,[{...wrong,autoResult:null}]),false);
+ assert.equal(needsActivityRetry(work,undefined,[wrong]),true);
+ const right={...wrong,autoResult:'correct'};
+ assert.equal(needsActivityRetry(work,undefined,[wrong,right]),false);
+ assert.equal(needsActivityRetry(work,undefined,[right,wrong]),false);
+ assert.equal(needsActivityRetry(work,undefined,[{...wrong,activityId:'other'}]),false);
+ assert.equal(needsActivityRetry({...work,type:'open'},undefined,[wrong]),false);
+});
+
+test('retry badges only use failures from the exact teacher assignment and pupil',()=>{
+ const work=activity('fractions',{type:'fraction'}),task={id:'new',studentId:'rocio',category:'Opcionales'};
+ const wrong={studentId:'rocio',assignmentId:'earlier',activityId:'fractions',autoResult:'incorrect'};
+ assert.equal(needsActivityRetry(work,task,[wrong]),false);
+ const current={...wrong,assignmentId:'new'};
+ assert.equal(needsActivityRetry(work,task,[current]),true);
+ assert.equal(needsActivityRetry(work,task,[{...current,studentId:'alejandra'}]),false);
+ assert.equal(needsActivityRetry(work,task,[current,{...wrong,autoResult:'correct'}]),true);
+ assert.equal(needsActivityRetry(work,task,[current,{...current,autoResult:'correct'}]),false);
 });

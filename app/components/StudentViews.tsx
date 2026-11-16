@@ -11,7 +11,7 @@ import { isTrackingDate } from "@/lib/academy-config";
 import StudentHome from "./StudentHome";
 import MathText from "./MathText";
 import { responsesForActivity, responsesForResource, linkedResourceActivity } from "@/lib/resource-work";
-import { hasCompletedActivity, type HomeWork } from "./student-home";
+import { hasCompletedActivity, needsActivityRetry, type HomeWork } from "./student-home";
 import { hasCompletedAssignment } from '@/lib/activity-completion';
 import { pendingTeacherAssignments, type PendingTeacherWork } from "./student-assignments";
 import { pdfFileForResource } from "@/lib/resource-files";
@@ -34,14 +34,14 @@ function revealStudentTarget(target: HTMLElement | null) {
   while (parent) { ancestors.unshift(parent); parent = parent.parentElement?.closest("details"); }
   ancestors.forEach(details => { details.open = true; });
 }
-function ActivityCard({ activity, assignment, response, onOpen }: any) {
+function ActivityCard({ activity, assignment, response, retry = false, onOpen }: any) {
   const previousContext = response && (response.activityId !== activity.id || assignment && assignment.category !== "Opcionales" && response.assignmentId !== assignment.id);
-  return <button type="button" className="card sv-activity-card ss-activity-card" data-activity-id={activity.id} onClick={onOpen}><div className="sv-card-top"><Subject value={activity.subject}/></div><div className="sv-activity-body ss-activity-body"><h3><MathText subject={activity.subject}>{activity.title}</MathText></h3></div><div className="sv-activity-footer"><div className="row wrap">{response?.reviewStatus === "reviewed" && <span className="badge green">{previousContext ? "Revisión anterior" : "Revisada"}</span>}</div><ArrowRight size={18} aria-hidden="true"/></div></button>;
+  return <button type="button" className="card sv-activity-card ss-activity-card" data-activity-id={activity.id} onClick={onOpen}><div className="sv-card-top"><Subject value={activity.subject}/></div><div className="sv-activity-body ss-activity-body"><h3><MathText subject={activity.subject}>{activity.title}</MathText></h3></div><div className="sv-activity-footer"><div className="row wrap">{retry ? <span className="badge amber">Reintentar</span> : response?.reviewStatus === "reviewed" && <span className="badge green">{previousContext ? "Revisión anterior" : "Revisada"}</span>}</div><ArrowRight size={18} aria-hidden="true"/></div></button>;
 }
 
-function AssignedActivityCard({ work, sequence, onOpen }: { work: PendingTeacherWork; sequence?: number; onOpen: () => void }) {
+function AssignedActivityCard({ work, sequence, retry = false, onOpen }: { work: PendingTeacherWork; sequence?: number; retry?: boolean; onOpen: () => void }) {
   const { assignment, activity, dueDate } = work;
-  return <button type="button" className="card sv-activity-card sv-assigned-card ss-activity-card" data-assignment-id={assignment.id} onClick={onOpen}><Subject value={activity.subject}/><div className="sv-activity-body ss-activity-body">{sequence && <span className="sv-assignment-context">Ejercicio {sequence}</span>}<h3><MathText subject={activity.subject}>{assignment.title || activity.title}</MathText></h3></div>{dueDate && <p className="sv-assignment-due">Fecha: <time dateTime={dueDate}>{studentDate(dueDate)}</time></p>}<span className="sv-assignment-open">Abrir<ArrowRight size={18} aria-hidden="true"/></span></button>;
+  return <button type="button" className="card sv-activity-card sv-assigned-card ss-activity-card" data-assignment-id={assignment.id} onClick={onOpen}><div className="sv-card-top"><Subject value={activity.subject}/>{retry && <span className="badge amber">Reintentar</span>}</div><div className="sv-activity-body ss-activity-body">{sequence && <span className="sv-assignment-context">Ejercicio {sequence}</span>}<h3><MathText subject={activity.subject}>{assignment.title || activity.title}</MathText></h3></div>{dueDate && <p className="sv-assignment-due">Fecha: <time dateTime={dueDate}>{studentDate(dueDate)}</time></p>}<span className="sv-assignment-open">Abrir<ArrowRight size={18} aria-hidden="true"/></span></button>;
 }
 
 export default function StudentViews({ data, profile, tab, act, notify, onNavigate, personalizationRequested, onPersonalizationOpened }: Props) {
@@ -171,7 +171,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
     </>}
     {tab === "Practicar" && <>
       <div className="sv-section-intro"><span className="sv-icon-box"><PencilLine size={23}/></span><div><h1>Practicar</h1></div></div>
-      {pendingWork.length > 0 && <section className="sv-stack sv-assigned-work" aria-labelledby="assigned-work-title"><div className="sv-assigned-heading"><h2 ref={assignedHeading} tabIndex={-1} id="assigned-work-title" className="sw-section-title">Lo que tienes asignado</h2></div><div className="grid-2">{pendingWork.map(work => <AssignedActivityCard key={work.assignment.id} work={work} sequence={pendingWork.filter(item => item.activity.id === work.activity.id).length > 1 ? pendingWork.filter(item => item.activity.id === work.activity.id).findIndex(item => item.assignment.id === work.assignment.id) + 1 : undefined} onOpen={() => openActivity(work.activity, work.assignment, "", work.assignment.id)}/>)}</div></section>}
+      {pendingWork.length > 0 && <section className="sv-stack sv-assigned-work" aria-labelledby="assigned-work-title"><div className="sv-assigned-heading"><h2 ref={assignedHeading} tabIndex={-1} id="assigned-work-title" className="sw-section-title">Lo que tienes asignado</h2></div><div className="grid-2">{pendingWork.map(work => <AssignedActivityCard key={work.assignment.id} work={work} retry={needsActivityRetry(work.activity, work.assignment, responses)} sequence={pendingWork.filter(item => item.activity.id === work.activity.id).length > 1 ? pendingWork.filter(item => item.activity.id === work.activity.id).findIndex(item => item.assignment.id === work.assignment.id) + 1 : undefined} onOpen={() => openActivity(work.activity, work.assignment, "", work.assignment.id)}/>)}</div></section>}
       {pendingWork.length > 0 && <h2 className="sw-section-title sv-more-practice-title">Más para practicar</h2>}
       <div className="sv-practice-sections" role="group" aria-label="Contenido de Practicar">
         <button type="button" className={practiceSection === "exercises" ? "active" : ""} aria-pressed={practiceSection === "exercises"} onClick={() => switchPracticeSection("exercises")}><PencilLine size={18} aria-hidden="true"/>Ejercicios</button>
@@ -185,7 +185,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
 
       </div></details>
       <p className="muted ss-result-count" role="status">{matchingActivities.length} {matchingActivities.length === 1 ? "ejercicio" : "ejercicios"}</p>
-      {Array.from(groupedActivities.entries()).map(([name, items]) => <section className="sv-stack sw-activity-group" key={name}><h2 className="sw-section-title">{name}</h2><div className="grid-2">{items.map(item => <ActivityCard key={item.id} activity={item} assignment={assignmentFor(item.id)} response={latestFor(item.id)} count={historyFor(item.id).length} onOpen={() => openActivity(item)}/>)}</div></section>)}
+      {Array.from(groupedActivities.entries()).map(([name, items]) => <section className="sv-stack sw-activity-group" key={name}><h2 className="sw-section-title">{name}</h2><div className="grid-2">{items.map(item => <ActivityCard key={item.id} activity={item} assignment={assignmentFor(item.id)} response={latestFor(item.id)} retry={needsActivityRetry(item, assignmentFor(item.id), responses)} count={historyFor(item.id).length} onOpen={() => openActivity(item)}/>)}</div></section>)}
       {!matchingActivities.length && <Empty icon={Search} title="Sin ejercicios en esta selección">Prueba otro filtro o búsqueda.<br/><button className="btn secondary sv-practice-clear" onClick={() => { clearFilters(); setPracticeView("Todos"); }}>Ver todos los ejercicios</button></Empty>}
       {matchingActivities.length > limit && <button className="btn secondary" onClick={() => setLimit(value => value + 5)}>Mostrar más ejercicios</button>}
       </section>}

@@ -1,4 +1,4 @@
-import {hasCompletedAssignment, responseCompletesActivity} from '../../lib/activity-completion';
+import {hasCompletedAssignment, isAutomaticallyChecked, responseCompletesActivity} from '../../lib/activity-completion';
 
 type Item = Record<string, any>;
 export type HomeWork = { key: string; activity?: Item; resource?: Item; assignment?: Item; draft?: Item; copies?: Item[]; kind?: "teacher" | "draft" | "proposal" };
@@ -14,6 +14,12 @@ export const hasActivitySubmission = (activity: Item, assignment: Item | undefin
 export function hasCompletedActivity(activity: Item, assignment: Item | undefined, responses: Item[]): boolean {
   if (teacherAssignment(activity, assignment)) return hasCompletedAssignment(activity, assignment!, responses);
   return responses.some(item => activityResponse(activity, item) && responseCompletesActivity(activity, item));
+}
+export function needsActivityRetry(activity: Item, assignment: Item | undefined, responses: Item[]): boolean {
+  if (!isAutomaticallyChecked(activity) || hasCompletedActivity(activity, assignment, responses)) return false;
+  return responses.some(item => item.autoResult === 'incorrect' && (teacherAssignment(activity, assignment)
+    ? item.assignmentId === assignment!.id && (!assignment!.studentId || item.studentId === assignment!.studentId)
+    : activityResponse(activity, item)));
 }
 
 /** Legacy resource copies remain accessible while a current activity draft takes precedence. */
