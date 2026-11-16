@@ -12,6 +12,7 @@ registerHooks({resolve(specifier,context,next){
   return next(specifier,context);
 }});
 const {createPdfSharePlan,shareTeacherPdf}=await import('../lib/share-teacher-pdf.ts');
+const {isExamPreparation,examModeLabel}=await import('../lib/exam-materials.ts');
 const make=(extra={})=>createPdfSharePlan({file:new File([pdf],'ficha.pdf',{type:'application/pdf'}),title:'  Ficha de repaso  ',subject:'  Matemáticas  ',studentIds:['rocio'],...extra});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const metadata=target=>({id:`file-${target.studentId}`,type:'application/pdf',shared:true,name:'ficha.pdf',size:pdf.length});
@@ -19,7 +20,7 @@ const metadata=target=>({id:`file-${target.studentId}`,type:'application/pdf',sh
 test('plans validate PDF bytes, trim metadata and allocate unique stable IDs for one or both pupils',async()=>{
   for(const studentIds of [['rocio'],['alejandra'],['rocio','alejandra'],['alejandra','alejandra']]){
     const plan=await make({studentIds});
-    assert.deepEqual(plan.targets.map(t=>t.studentId),[...new Set(studentIds)]);assert.equal(plan.title,'Ficha de repaso');assert.equal(plan.subject,'Matemáticas');
+    assert.deepEqual(plan.targets.map(t=>t.studentId),[...new Set(studentIds)]);assert.equal(plan.title,'Ficha de repaso');assert.equal(plan.subject,'Matemáticas');assert.equal(plan.collection,'materials');assert.equal(plan.examMode,'either');
     const ids=plan.targets.flatMap(t=>[t.uploadId,t.resourceId]);assert.ok(ids.every(id=>uuid.test(id)));assert.equal(new Set(ids).size,ids.length);assert.ok(plan.targets.every(t=>!t.shared&&!t.file));
   }
   for(const type of ['','application/octet-stream','image/png'])assert.equal((await make({file:new File([pdf],'sin-extension',{type})})).targets.length,1);
@@ -38,7 +39,7 @@ test('both destinations run sequentially with only one owned resource payload pe
   const plan=await make({studentIds:['rocio','alejandra']}),events=[],progress=[];
   const saved=await shareTeacherPdf(plan,{
     uploadFile:async(target,file)=>{assert.equal(file,plan.file);events.push(`upload:${target.studentId}`);return metadata(target);},
-    saveResource:async payload=>{events.push(`resource:${payload.studentId}`);const target=plan.targets.find(t=>t.studentId===payload.studentId);assert.deepEqual(payload,{id:target.resourceId,studentId:target.studentId,suggestedStudentIds:[target.studentId],fileId:`file-${target.studentId}`,type:'PDF',title:'Ficha de repaso',subject:'Matemáticas',instructions:'Consulta el PDF.'});},
+    saveResource:async payload=>{events.push(`resource:${payload.studentId}`);const target=plan.targets.find(t=>t.studentId===payload.studentId);assert.deepEqual(payload,{id:target.resourceId,studentId:target.studentId,suggestedStudentIds:[target.studentId],fileId:`file-${target.studentId}`,type:'PDF',title:'Ficha de repaso',subject:'Matemáticas',instructions:'Consulta el PDF.',collection:'materials',examMode:'either'});},
   },current=>{assert.equal(current,plan);progress.push(current.targets.map(t=>({uploaded:!!t.file,shared:t.shared})));});
   assert.equal(saved,plan);assert.deepEqual(events,['upload:rocio','resource:rocio','upload:alejandra','resource:alejandra']);
   assert.deepEqual(progress,[ [{uploaded:true,shared:false},{uploaded:false,shared:false}], [{uploaded:true,shared:true},{uploaded:false,shared:false}], [{uploaded:true,shared:true},{uploaded:true,shared:false}], [{uploaded:true,shared:true},{uploaded:true,shared:true}] ]);
@@ -91,5 +92,26 @@ test('a resolved failure or conflict cannot masquerade as a confirmed resource',
   for(const result of [{ok:false},{conflict:true}]){
     const plan=await make();await assert.rejects(()=>shareTeacherPdf(plan,{uploadFile:async target=>metadata(target),saveResource:async()=>result}),/confirmado el recurso/);
     assert.equal(plan.targets[0].shared,false);assert.equal(plan.targets[0].file.id,'file-rocio');
+  }
+});
+
+test('exam collection and use mode are explicit metadata with safe legacy reading defaults',async()=>{
+  for(const resource of [undefined,null,{}, {collection:'materials'}, {collection:'materials',examMode:'class'}, {collection:'unknown'}])assert.equal(isExamPreparation(resource),false);
+  assert.equal(isExamPreparation({collection:'exam-prep'}),true);
+  assert.equal(examModeLabel('class'),'En clase');assert.equal(examModeLabel('class',false),'En clase');
+  assert.equal(examModeLabel('independent'),'Por tu cuenta');assert.equal(examModeLabel('independent',false),'Por su cuenta');
+  for(const value of ['either',undefined,null,'unknown']){assert.equal(examModeLabel(value),'En clase o por tu cuenta');assert.equal(examModeLabel(value,false),'En clase o por su cuenta');}
+  for(const collection of [null,'exam','other',3])await assert.rejects(()=>make({collection}),/materiales o preparación/);
+  for(const examMode of [null,'alone','teacher',3])await assert.rejects(()=>make({examMode}),/cómo se utilizará/);
+});
+
+test('exam preparation classification is retained for each pupil through a partial retry',async()=>{
+  for(const examMode of ['class','independent','either']){
+    const plan=await make({studentIds:['rocio','alejandra'],collection:'exam-prep',examMode}),identities=plan.targets.map(t=>[t.uploadId,t.resourceId]),saved=[];let fail=true,uploads=0;
+    const deps={uploadFile:async target=>{uploads++;return metadata(target);},saveResource:async payload=>{saved.push(structuredClone(payload));if(payload.studentId==='alejandra'&&fail){fail=false;throw Error('Incomplete second recipient');}}};
+    await assert.rejects(()=>shareTeacherPdf(plan,deps),/Incomplete/);await shareTeacherPdf(plan,deps);
+    assert.equal(uploads,2);assert.deepEqual(plan.targets.map(t=>[t.uploadId,t.resourceId]),identities);assert.ok(plan.targets.every(t=>t.shared));
+    assert.ok(saved.every(payload=>payload.collection==='exam-prep'&&payload.examMode===examMode));assert.deepEqual(saved[1],saved[2]);
+    assert.ok(saved.every(payload=>!('activityId'in payload)&&!('assignmentId'in payload)&&!('examId'in payload)&&!('duration'in payload)&&!('url'in payload)));
   }
 });

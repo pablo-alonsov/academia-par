@@ -1,4 +1,5 @@
 import { detectUploadType, MAX_UPLOAD_BYTES } from "./upload-format";
+import type { PdfCollection, ExamMode } from "./exam-materials";
 
 export type PdfShareStudentId = "rocio" | "alejandra";
 export type PdfShareFileMetadata = {id: string; type: string; name?: string; size?: number; shared?: boolean};
@@ -14,11 +15,14 @@ export type PdfSharePlan = {
   readonly file: File;
   readonly title: string;
   readonly subject: string;
+  readonly collection: PdfCollection;
+  readonly examMode: ExamMode;
   readonly targets: PdfShareTarget[];
 };
 export type PdfShareResource = {
   id: string; studentId: PdfShareStudentId; suggestedStudentIds: PdfShareStudentId[];
   fileId: string; type: "PDF"; title: string; subject: string; instructions: "Consulta el PDF.";
+  collection: PdfCollection; examMode: ExamMode;
 };
 export type PdfShareDependencies = {
   uploadFile: (target: PdfShareTarget, file: File) => Promise<PdfShareFileMetadata>;
@@ -27,17 +31,19 @@ export type PdfShareDependencies = {
 };
 
 /** Allocate IDs once, before any network call. Keep this same plan for retries. */
-export async function createPdfSharePlan({file, title, subject, studentIds}: {
-  file: File; title: string; subject: string; studentIds: PdfShareStudentId[];
+export async function createPdfSharePlan({file, title, subject, studentIds, collection = "materials", examMode = "either"}: {
+  file: File; title: string; subject: string; studentIds: PdfShareStudentId[]; collection?: PdfCollection; examMode?: ExamMode;
 }): Promise<PdfSharePlan> {
   if (!Array.isArray(studentIds) || !studentIds.length || studentIds.some(id => id !== "rocio" && id !== "alejandra")) throw Error("Elige Rocío, Alejandra o ambas alumnas.");
   if (typeof title !== "string" || !title.trim() || title.trim().length > 250) throw Error("Escribe un título de hasta 250 caracteres.");
   if (typeof subject !== "string" || subject.trim().length > 150) throw Error("La asignatura debe tener hasta 150 caracteres.");
+  if (collection !== "materials" && collection !== "exam-prep") throw Error("Elige materiales o preparación de exámenes.");
+  if (examMode !== "class" && examMode !== "independent" && examMode !== "either") throw Error("Elige cómo se utilizará el PDF de preparación.");
   if (!file || typeof file.arrayBuffer !== "function" || typeof file.name !== "string" || !Number.isInteger(file.size) || file.size <= 0 || file.size > MAX_UPLOAD_BYTES) throw Error("El PDF debe ocupar entre 1 byte y 8 MB.");
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.length !== file.size || detectUploadType(bytes, file.name, file.type) !== "application/pdf") throw Error("Selecciona un PDF válido. Cambiar la extensión de otro archivo no lo convierte en PDF.");
   const targets = [...new Set(studentIds)].map(studentId => ({studentId, uploadId: crypto.randomUUID(), resourceId: crypto.randomUUID(), shared: false}));
-  return {file, title: title.trim(), subject: subject.trim(), targets};
+  return {file, title: title.trim(), subject: subject.trim(), collection, examMode, targets};
 }
 
 function checkedMetadata(value: PdfShareFileMetadata): PdfShareFileMetadata {
@@ -64,7 +70,7 @@ export async function shareTeacherPdf(plan: PdfSharePlan, dependencies: PdfShare
     const file = checkedMetadata(target.file);
     const saved = await dependencies.saveResource({id: target.resourceId, studentId: target.studentId,
       suggestedStudentIds: [target.studentId], fileId: file.id, type: "PDF", title: plan.title,
-      subject: plan.subject, instructions: "Consulta el PDF.",
+      subject: plan.subject, instructions: "Consulta el PDF.", collection: plan.collection, examMode: plan.examMode,
     });
     if (saved && typeof saved === "object" && ((saved as Record<string,unknown>).ok === false || (saved as Record<string,unknown>).conflict === true)) throw Error("No se ha confirmado el recurso. Vuelve a intentarlo.");
     target.shared = true;

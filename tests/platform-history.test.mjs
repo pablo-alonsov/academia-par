@@ -51,6 +51,42 @@ test('routes round-trip IDs and assignment context without serializing answers o
   assert.deepEqual(normalizePlatformRoute({tab:'Biblioteca',detail:{kind:'teacher-session',id:'private-session'}},'rocio'),route('Inicio'));
 });
 
+test('exam preparation resource and exercise origins round-trip while legacy origins remain valid',()=>{
+  for(const kind of ['resource','activity']){
+    const detail={kind,id:kind==='resource'?'ficha-examen-pdf':'a-fracciones',source:'exam-prep',sourceAssignmentId:'encargo-examen'};
+    if(kind==='activity')detail.assignmentId='encargo-ejercicio';
+    const expected={tab:'Practicar',detail};
+    assert.deepEqual(normalizePlatformRoute(expected,'alejandra'),expected);
+    assert.deepEqual(platformRouteFromHash(platformRouteHash(expected),'alejandra'),expected);
+  }
+  for(const source of ['resources','exercises']){
+    const expected={...exercise,detail:{...exercise.detail,source}};
+    assert.deepEqual(platformRouteFromHash(platformRouteHash(expected),'rocio'),expected);
+  }
+  const unknown={tab:'Practicar',detail:{kind:'resource',id:'ficha-examen-pdf',source:'unknown-origin'}};
+  const clean={tab:'Practicar',detail:{kind:'resource',id:'ficha-examen-pdf'}};
+  assert.deepEqual(normalizePlatformRoute(unknown,'alejandra'),clean);
+  assert.deepEqual(platformRouteFromHash(platformRouteHash(unknown),'alejandra'),clean);
+  assert.deepEqual(platformRouteFromHash('#calendario','rocio'),route('Calendario'));
+});
+
+test('exam preparation origin survives native Back and Forward and reload for PDFs and exercises',async()=>{
+  const f=fixture();f.controller.init('alejandra','Inicio');
+  const pdf={tab:'Practicar',detail:{kind:'resource',id:'ficha-examen-pdf',source:'exam-prep',sourceAssignmentId:'encargo-examen'}};
+  const activity={tab:'Practicar',detail:{kind:'activity',id:'a-fracciones',assignmentId:'encargo-ejercicio',source:'exam-prep',sourceAssignmentId:'encargo-examen'}};
+  await f.controller.navigate(route('Practicar'));await f.controller.navigate(pdf);await f.controller.navigate(activity);
+  f.b.nativeBack();await f.b.settle();assert.deepEqual(f.routes.at(-1),pdf);
+  f.b.nativeBack();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Practicar'));
+  f.b.nativeForward();await f.b.settle();assert.deepEqual(f.routes.at(-1),pdf);
+  const length=f.b.entries.length;f.controller.destroy();
+  const restored=new PlatformHistory(f.options);restored.init('alejandra','Inicio');
+  assert.deepEqual(f.routes.at(-1),pdf);assert.equal(f.b.entries.length,length);assert.equal(f.latest.canForward,true);
+  f.b.nativeForward();await f.b.settle();assert.deepEqual(f.routes.at(-1),activity);
+  restored.destroy();const again=new PlatformHistory(f.options);again.init('alejandra','Inicio');
+  assert.deepEqual(f.routes.at(-1),activity);assert.equal(f.b.entries.length,length);
+  f.b.nativeBack();await f.b.settle();assert.deepEqual(f.routes.at(-1),pdf);
+});
+
 test('initial entry creates one boundary and preserves framework history keys',()=>{
   const f=fixture();f.controller.init('alejandra','Inicio');
   assert.equal(f.b.entries.length,3);

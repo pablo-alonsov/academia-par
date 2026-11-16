@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, FileText, Flag, PencilLine, Search, Star } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, FileText, Flag, NotebookPen, PencilLine, Search, Star } from "lucide-react";
 import StudyPlan from "./StudyPlan";
 import { PersonalizationPanel, StudentAvatar, studentColors, WordCollection } from "./StudentTools";
 import { StudentActivityDetail, StudentResourceDialog, studentDate, WorkFiles } from "./StudentWork";
@@ -15,11 +15,13 @@ import { hasCompletedActivity, needsActivityRetry, type HomeWork } from "./stude
 import { hasCompletedAssignment } from '@/lib/activity-completion';
 import { pendingTeacherAssignments, type PendingTeacherWork } from "./student-assignments";
 import { groupResourcesBySource, pdfFileForResource } from "@/lib/resource-files";
+import { examModeLabel, isExamPreparation } from '@/lib/exam-materials';
 import { usePlatformNavigation } from './PlatformNavigation';
 import "./student.css";
 import "./student-simple.css";
 
 type Item = Record<string, any>;
+type PracticeSection = "exercises" | "resources" | "exam-prep";
 type Props = { data: Item; profile: string; tab: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void; onNavigate?: (tab: string) => void | Promise<void>; onRefresh?: () => Promise<void>; personalizationRequested?: boolean; onPersonalizationOpened?: () => void };
 const STATES = ["Por empezar", "Lo estamos trabajando", "Lo hago con ayuda", "Lo hago sola", "Lo he recordado días después"];
 const plain = (value: any) => Array.isArray(value) ? value.join(" · ") : typeof value === "string" ? value : "";
@@ -44,6 +46,15 @@ function AssignedActivityCard({ work, sequence, retry = false, onOpen }: { work:
   return <button type="button" className="card sv-activity-card sv-assigned-card ss-activity-card" data-assignment-id={assignment.id} onClick={onOpen}><div className="sv-card-top"><Subject value={activity.subject}/>{retry && <span className="badge amber">Reintentar</span>}</div><div className="sv-activity-body ss-activity-body">{sequence && <span className="sv-assignment-context">Ejercicio {sequence}</span>}<h3><MathText subject={activity.subject}>{assignment.title || activity.title}</MathText></h3></div>{dueDate && <p className="sv-assignment-due">Fecha: <time dateTime={dueDate}>{studentDate(dueDate)}</time></p>}<span className="sv-assignment-open">Abrir<ArrowRight size={18} aria-hidden="true"/></span></button>;
 }
 
+function ResourceCard({ resource, pdf, material, unread, consulted, favorite, busy, onFavorite, onOpen }: any) {
+  return <article className="card sv-pad sv-resource ss-resource-card">
+    <div className="sv-card-top"><Subject value={resource.subject}/><button className="sw-favorite" type="button" disabled={busy} aria-pressed={favorite} aria-label={`${favorite?"Quitar de favoritos":"Añadir a favoritos"}: ${resource.title}`} onClick={onFavorite}><Star size={19} fill={favorite?"currentColor":"none"}/></button></div>
+    <div className="row wrap sw-resource-tags">{consulted&&<span className="badge">Recurso consultado</span>}{unread&&<span className="badge green">Revisión nueva</span>}{isExamPreparation(resource)&&<span className="badge blue">{examModeLabel(resource.examMode)}</span>}<span className="muted sv-small">{pdf?"PDF":resource.type||(material?"Material de clase":"Web")}</span></div>
+    <h3><MathText subject={resource.subject}>{resource.title}</MathText></h3>
+    <button className="btn secondary sv-resource-open" data-resource-id={resource.id} onClick={onOpen}>{pdf?"Abrir ficha":material?"Ver material":"Abrir recurso"}<ArrowRight size={16}/></button>
+  </article>;
+}
+
 export default function StudentViews({ data, profile, tab, act, notify, onNavigate, onRefresh, personalizationRequested, onPersonalizationOpened }: Props) {
   const navigation = usePlatformNavigation(), detail = navigation.route.detail;
   const student = (data.students || []).find((item: Item) => item.id === profile) || { id: profile, name: profile === "rocio" ? "Rocío" : "Alejandra", priorities: [] };
@@ -60,13 +71,14 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const previousLocalQuestions = localQuestions.copies.filter(copy => String(copy.value.question || "").trim() && !doubts.some(item => item.question === copy.value.question));
   const [returnResource, setReturnResource] = useState("");
   const [subject, setSubject] = useState(""), [search, setSearch] = useState(""), [skillFilter, setSkillFilter] = useState("");
-  const [practiceSection, setPracticeSection] = useState<"exercises" | "resources">("exercises");
+  const [practiceSection, setPracticeSection] = useState<PracticeSection>("exercises");
   const [resourceSubject, setResourceSubject] = useState(""), [resourceSearch, setResourceSearch] = useState(""), [resourceLimit, setResourceLimit] = useState(5), [materialLimit, setMaterialLimit] = useState(5);
   const [practiceMode, setPracticeMode] = useState("Sin hacer"), [limit, setLimit] = useState(5);
   const [pathMode, setPathMode] = useState("Ahora"), [pathLimit, setPathLimit] = useState(5), [resourceMode, setResourceMode] = useState("Todos"), [resourceType, setResourceType] = useState(""), [favoriteBusy, setFavoriteBusy] = useState(false), [sessionLimit, setSessionLimit] = useState(5);
   const [localVersion, setLocalVersion] = useState(0), [readVersion, setReadVersion] = useState(0);
+  const [examSearch, setExamSearch] = useState(""), [examLimit, setExamLimit] = useState(6);
   useEffect(() => { setMaterialLimit(5); }, [resourceSubject, resourceSearch, resourceType, resourceMode]);
-  const activityReturn = useRef({ top: 0, id: "", resourceId: "", sourceAssignmentId: "", assignmentIndex: -1, listIndex:0, section: "exercises" as "exercises" | "resources" }), resourceReturn = useRef({ top: 0, id: "", section: "exercises" as "exercises" | "resources" }), sessionReturn = useRef({ top: 0, id: "" }), sessionHeading = useRef<HTMLHeadingElement>(null);
+  const activityReturn = useRef({ top: 0, id: "", resourceId: "", sourceAssignmentId: "", assignmentIndex: -1, listIndex:0, section: "exercises" as PracticeSection }), resourceReturn = useRef({ top: 0, id: "", section: "exercises" as PracticeSection }), sessionReturn = useRef({ top: 0, id: "" }), sessionHeading = useRef<HTMLHeadingElement>(null);
   const drafts: Item[] = useMemo(() => studentDrafts(profile, data.drafts || []), [profile, data.drafts, localVersion]);
   useEffect(() => { const refresh = () => setLocalVersion(value => value + 1), reviews = () => setReadVersion(value => value + 1); window.addEventListener("arp:drafts-changed", refresh); window.addEventListener("storage", refresh); window.addEventListener("arp-review-read-changed", reviews); initializeReadState(profile, data.responses || [], data.doubts || []); return () => { window.removeEventListener("arp:drafts-changed", refresh); window.removeEventListener("storage", refresh); window.removeEventListener("arp-review-read-changed", reviews); }; }, [profile]);
   useEffect(() => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); setPathLimit(5); }, [tab, profile]);
@@ -86,8 +98,8 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
       requestAnimationFrame(() => { const remaining = pendingWork.find(work => work.assignment.id === previous.sourceAssignmentId) || pendingWork[Math.max(0, Math.min(previous.assignmentIndex, pendingWork.length - 1))]; const target = remaining ? document.querySelector<HTMLElement>(`[data-assignment-id="${CSS.escape(remaining.assignment.id)}"]`) : document.querySelector<HTMLElement>('.sv-practice-sections button[aria-pressed="true"]'); if (target) { revealStudentTarget(target); target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "auto" }); } else assignedHeading.current?.focus({ preventScroll: true }); });
       return;
     }
-    if (tab === "Practicar" && previous.section === "resources") { setPracticeSection("resources"); setReturnResource(previous.resourceId); setResourceLimit(value => Math.max(value, 5)); }
-    if (tab === "Practicar" && previous.section === "resources" && previous.resourceId) restoreResourceCard(previous.resourceId, previous.top);
+    if (tab === "Practicar" && (previous.section === "resources" || previous.section === "exam-prep")) { setPracticeSection(previous.section); setReturnResource(previous.resourceId); setResourceLimit(value => Math.max(value, 5)); }
+    if (tab === "Practicar" && (previous.section === "resources" || previous.section === "exam-prep") && previous.resourceId) restoreResourceCard(previous.resourceId, previous.top);
     else requestAnimationFrame(() => { const cards=tab==='Practicar'?Array.from(document.querySelectorAll<HTMLElement>('.ss-activity-card[data-activity-id]')):[];const target = document.querySelector<HTMLElement>(`[data-activity-id="${CSS.escape(id)}"]`) || cards[Math.min(previous.listIndex,cards.length-1)]; if (target) { revealStudentTarget(target); target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "auto" }); } else { document.querySelector<HTMLElement>('.sv-practice-sections button[aria-pressed="true"]')?.focus({preventScroll:true});window.scrollTo({ top: previous.top, behavior: "auto" }); } });
   };
   const closeActivity = () => navigation.back();
@@ -104,7 +116,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
     if (detail?.kind === 'resource' && resourceReturn.current.id !== detail.id) resourceReturn.current = {id:detail.id,top:0,section:detail.source || 'resources'};
     if (detail?.kind === 'student-session' && sessionReturn.current.id !== detail.id) sessionReturn.current = {id:detail.id,top:0};
     if (previous?.kind === 'activity' && !activityId) restoreActivity();
-    if (previous?.kind === 'resource' && !resourceId) { const returned=resourceReturn.current; if(returned.section==='resources'){setPracticeSection('resources');setReturnResource(returned.id);} restoreResourceCard(returned.id,returned.top); }
+    if (previous?.kind === 'resource' && !resourceId) { const returned=resourceReturn.current; if(returned.section==='resources'||returned.section==='exam-prep'){setPracticeSection(returned.section);setReturnResource(returned.id);} restoreResourceCard(returned.id,returned.top); }
     if (previous?.kind === 'student-session' && !sessionId && !activityId) requestAnimationFrame(() => { const target=document.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(sessionReturn.current.id)}"]`);revealStudentTarget(target);target?.focus({preventScroll:true});window.scrollTo({top:sessionReturn.current.top,behavior:'auto'}); });
   },[detail]);
   const openHomeWork = (work: HomeWork) => { if (work.activity) openActivity(work.activity, work.assignment, work.resource?.id); else if (work.resource) openResource(work.resource); };
@@ -126,11 +138,20 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const visibleActivities = matchingActivities.slice(0, limit), groupedActivities = new Map<string, Item[]>();
   visibleActivities.forEach(item => groupedActivities.set(item.subject, [...(groupedActivities.get(item.subject) || []), item]));
   const matchingSkills = skills.filter(item => (!subject || item.subject === subject) && (pathMode === "Todo" || pathMode === "Ahora" && !futureSkill(item) || pathMode === "Conviene repasar" && item.reviewNeeded || pathMode === "Más adelante" && futureSkill(item)));
-  const matchingResources = resources.filter(item => (!resourceSubject || item.subject === resourceSubject) && (!resourceType || item.type === resourceType) && (resourceMode === "Todos" || resourceMode === "Favoritos" && favoriteIds.includes(item.id) || resourceMode === "Elegidos por el docente" && (item.pinned || pinnedIds.includes(item.id))) && (!searchText(resourceSearch) || searchText(`${item.title} ${item.objective}`).includes(searchText(resourceSearch)))).sort((a, b) => (a.id === returnResource ? -1 : b.id === returnResource ? 1 : 0) || Number(Boolean(b.pinned || pinnedIds.includes(b.id))) - Number(Boolean(a.pinned || pinnedIds.includes(a.id))) || Number(favoriteIds.includes(b.id)) - Number(favoriteIds.includes(a.id)) || a.title.localeCompare(b.title, "es"));
-  const returnedResource = returnResource && !matchingResources.some(item => item.id === returnResource) ? resources.find(item => item.id === returnResource) : undefined;
+  const classResources = resources.filter(item => !isExamPreparation(item));
+  const matchingResources = classResources.filter(item => (!resourceSubject || item.subject === resourceSubject) && (!resourceType || item.type === resourceType) && (resourceMode === "Todos" || resourceMode === "Favoritos" && favoriteIds.includes(item.id) || resourceMode === "Elegidos por el docente" && (item.pinned || pinnedIds.includes(item.id))) && (!searchText(resourceSearch) || searchText(`${item.title} ${item.objective}`).includes(searchText(resourceSearch)))).sort((a, b) => (a.id === returnResource ? -1 : b.id === returnResource ? 1 : 0) || Number(Boolean(b.pinned || pinnedIds.includes(b.id))) - Number(Boolean(a.pinned || pinnedIds.includes(a.id))) || Number(favoriteIds.includes(b.id)) - Number(favoriteIds.includes(a.id)) || a.title.localeCompare(b.title, "es"));
+  const returnedResource = returnResource && !matchingResources.some(item => item.id === returnResource) ? classResources.find(item => item.id === returnResource) : undefined;
   const resourceGroups = groupResourcesBySource([...(returnedResource ? [returnedResource] : []), ...matchingResources], data.files || []);
+  const examResources = resources.filter(item => isExamPreparation(item) && Boolean(pdfFileForResource(item, data.files || [])));
+  const matchingExamResources = examResources.filter(item => !searchText(examSearch) || searchText(`${item.title} ${item.subject || ""}`).includes(searchText(examSearch))).sort((a,b) => (a.id===returnResource?-1:b.id===returnResource?1:0) || sortRecent(a,b) || a.title.localeCompare(b.title,"es"));
+  const returnedExamResource = returnResource && !matchingExamResources.some(item=>item.id===returnResource) ? examResources.find(item=>item.id===returnResource) : undefined;
+  const visibleExamResources = [...(returnedExamResource?[returnedExamResource]:[]), ...matchingExamResources.slice(0,examLimit)];
+  const renderResourceCard = (resource: Item, material: boolean, consulted = false) => {
+    const pdf=pdfFileForResource(resource,data.files||[]),history=responsesForResource(resource.id,profile,responses,activities),unread=history.some(item=>item.reviewStatus==="reviewed"&&isUnread(profile,item));
+    return <ResourceCard key={resource.id} resource={resource} pdf={pdf} material={material} unread={unread} consulted={consulted} favorite={favoriteIds.includes(resource.id)} busy={favoriteBusy} onFavorite={()=>toggleFavorite(resource.id)} onOpen={()=>openResource(resource)}/>;
+  };
   const clearResourceFilters = () => { setResourceSubject(""); setResourceSearch(""); setResourceType(""); setResourceMode("Todos"); setReturnResource(""); setResourceLimit(5); setMaterialLimit(5); };
-  const switchPracticeSection = (section: "exercises" | "resources") => { setPracticeSection(section); setReturnResource(""); if(section === "resources") void onRefresh?.().catch(()=>notify("No se han podido actualizar los materiales.")); };
+  const switchPracticeSection = (section: PracticeSection) => { setPracticeSection(section); setReturnResource(""); if(section !== "exercises") void onRefresh?.().catch(()=>notify("No se han podido actualizar los materiales.")); };
   const clearFilters = () => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); };
   const selectedActivity = activities.find(item => item.id === activityId), selectedResource = resources.find(item => item.id === resourceId), selectedSession = sessions.find(item => item.id === sessionId);
   const homeDraftOptions: HomeWork[] = drafts.flatMap<HomeWork>(draft => {
@@ -143,7 +164,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   });
   const color = studentColors[student.color] || studentColors[profile === "rocio" ? "violet" : "teal"];
 
-  if (selectedActivity) return <StudentActivityDetail key={`${profile}:${activityId}`} activity={{ ...selectedActivity, url: selectedActivity.url || resources.find(item => item.id === selectedActivity.resourceId)?.url }} assignment={assignments.find(item => item.id === assignmentId)} student={student} data={data} act={act} notify={notify} onBack={closeActivity} backLabel={tab === "Inicio" ? "Volver a Inicio" : tab === "Practicar" && activityReturn.current.sourceAssignmentId ? "Volver a mis encargos" : tab === "Practicar" && activityReturn.current.section === "resources" ? "Volver a recursos y materiales" : tab === "Mis clases" ? "Volver a mis clases" : "Volver a practicar"}/>;
+  if (selectedActivity) return <StudentActivityDetail key={`${profile}:${activityId}`} activity={{ ...selectedActivity, url: selectedActivity.url || resources.find(item => item.id === selectedActivity.resourceId)?.url }} assignment={assignments.find(item => item.id === assignmentId)} student={student} data={data} act={act} notify={notify} onBack={closeActivity} backLabel={tab === "Inicio" ? "Volver a Inicio" : tab === "Practicar" && activityReturn.current.sourceAssignmentId ? "Volver a mis encargos" : tab === "Practicar" && activityReturn.current.section === "exam-prep" ? "Volver a preparar exámenes" : tab === "Practicar" && activityReturn.current.section === "resources" ? "Volver a fichas y enlaces" : tab === "Mis clases" ? "Volver a mis clases" : "Volver a practicar"}/>;
   if (selectedSession) return <div className="student-views sv-stack"><button className="btn quiet sv-back" onClick={closeSession}><ArrowLeft size={17}/>{tab === "Inicio" ? "Volver a Inicio" : "Volver a mis clases"}</button><div className="sv-detail-heading"><span className="eyebrow">{studentDate(selectedSession.date)}</span><h1 ref={sessionHeading} tabIndex={-1}>{selectedSession.objective || selectedSession.subject || "Clase individual"}</h1></div><div className="grid-2"><section className="card sv-pad"><h3>Qué trabajamos</h3><p className="sv-preline">{plain(selectedSession.content) || selectedSession.sharedSummary}</p>{selectedSession.sharedSummary && selectedSession.sharedSummary !== plain(selectedSession.content) && <p className="sv-preline">{selectedSession.sharedSummary}</p>}</section><section className="card sv-pad"><h3>Explicación</h3><p className="sv-preline">{selectedSession.explanation || "Sin explicación compartida."}</p></section></div>{(selectedSession.originalText || selectedSession.revisedText) && <section className="card sv-pad" aria-label="Comparación de versiones del trabajo"><h3>Versiones del trabajo</h3><div className="grid-2 sv-before-after"><div><h4>Versión original</h4><p className="sv-preline">{selectedSession.originalText || "Sin versión original."}</p></div><div><h4>Versión revisada</h4><p className="sv-preline">{selectedSession.revisedText || "Sin versión revisada."}</p></div></div></section>}<section className="card sv-pad"><h3>Material para consultar</h3><p className="sv-preline">{plain(selectedSession.materials) || "Sin materiales compartidos."}</p><WorkFiles ids={selectedSession.fileIds}/>{(data.evidence || []).filter((item: Item) => item.sessionId === selectedSession.id).map((item: Item) => <div className="sv-inset" key={item.id}><strong>{item.title || "Trabajo de clase"}</strong><p className="sv-preline">{item.text || item.description || item.content}</p><WorkFiles ids={item.fileIds || (item.fileId ? [item.fileId] : [])}/></div>)}</section><section className="sv-next-card"><Flag size={21}/><div><span className="eyebrow">SIGUIENTE PASO</span><p>{selectedSession.nextStep || "Sin siguiente paso registrado."}</p></div></section>{assignments.filter(item => item.sessionId === selectedSession.id).map(item => { const activity = activities.find(candidate => candidate.id === item.activityId); return activity && <ActivityCard key={item.id} activity={activity} assignment={item} response={latestFor(activity.id)} onOpen={() => openActivity(activity, item)}/>; })}</div>;
 
   return <div className={`student-views sv-stack ss-student-lists sv-${profile}`} style={{ "--sv-accent": color.color, "--sv-soft": color.soft } as React.CSSProperties} data-review-version={readVersion}>
@@ -176,7 +197,8 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
       {pendingWork.length > 0 && <h2 className="sw-section-title sv-more-practice-title">Más para practicar</h2>}
       <div className="sv-practice-sections" role="group" aria-label="Contenido de Practicar">
         <button type="button" className={practiceSection === "exercises" ? "active" : ""} aria-pressed={practiceSection === "exercises"} onClick={() => switchPracticeSection("exercises")}><PencilLine size={18} aria-hidden="true"/>Ejercicios</button>
-        <button type="button" className={practiceSection === "resources" ? "active" : ""} aria-pressed={practiceSection === "resources"} onClick={() => switchPracticeSection("resources")}><BookOpen size={18} aria-hidden="true"/>Recursos y materiales</button>
+        <button type="button" className={practiceSection === "resources" ? "active" : ""} aria-pressed={practiceSection === "resources"} onClick={() => switchPracticeSection("resources")}><BookOpen size={18} aria-hidden="true"/>Fichas y enlaces</button>
+        <button type="button" className={practiceSection === "exam-prep" ? "active" : ""} aria-pressed={practiceSection === "exam-prep"} onClick={() => switchPracticeSection("exam-prep")}><NotebookPen size={18} aria-hidden="true"/>Preparar exámenes</button>
       </div>
       {practiceSection === "exercises" && <section className="sv-stack sv-practice-panel" aria-label="Ejercicios">
       <label className="sv-search ss-practice-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar ejercicios" value={search} onChange={event => { setSearch(event.target.value); setLimit(5); }} placeholder="Buscar ejercicios…"/></label>
@@ -190,8 +212,8 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
       {!matchingActivities.length && <Empty icon={Search} title="Sin ejercicios en esta selección">Prueba otro filtro o búsqueda.<br/><button className="btn secondary sv-practice-clear" onClick={() => { clearFilters(); setPracticeView("Todos"); }}>Ver todos los ejercicios</button></Empty>}
       {matchingActivities.length > limit && <button className="btn secondary" onClick={() => setLimit(value => value + 5)}>Mostrar más ejercicios</button>}
       </section>}
-      {practiceSection === "resources" && <section className="sv-stack sv-practice-panel" aria-label="Recursos y materiales">
-      <label className="sv-search ss-practice-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar recursos y materiales" value={resourceSearch} onChange={event => { setResourceSearch(event.target.value); setReturnResource(""); setResourceLimit(5); }} placeholder="Buscar recursos…"/></label>
+      {practiceSection === "resources" && <section className="sv-stack sv-practice-panel" aria-label="Fichas y enlaces">
+      <label className="sv-search ss-practice-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar fichas y enlaces" value={resourceSearch} onChange={event => { setResourceSearch(event.target.value); setReturnResource(""); setResourceLimit(5); }} placeholder="Buscar fichas y enlaces…"/></label>
       <details className="ss-filters"><summary>Filtros y favoritos{resourceMode !== "Todos" ? ` · ${resourceMode}` : resourceSubject || resourceType ? " · Activos" : ""}</summary><div className="sv-stack ss-filter-content">
       <div className="sv-chip-tabs" role="group" aria-label="Selección de recursos">{["Todos", "Favoritos", "Elegidos por el docente"].map(mode => <button key={mode} type="button" className={resourceMode === mode ? "active" : ""} aria-pressed={resourceMode === mode} onClick={() => { setResourceMode(mode); setReturnResource(""); setResourceLimit(5); }}>{mode}</button>)}</div>
       <div className="ss-resource-filters"><label className="sv-select-label">Asignatura<select value={resourceSubject} onChange={event => { setResourceSubject(event.target.value); setReturnResource(""); setResourceLimit(5); }}><option value="">Todas</option>{subjects.map(name => <option key={name}>{name}</option>)}</select></label><label className="sv-select-label">Tipo<select value={resourceType} onChange={event => { setResourceType(event.target.value); setReturnResource(""); setResourceLimit(5); }}><option value="">Todos</option>{[...new Set(resources.map(item => item.type).filter(Boolean))].map(type => <option key={type}>{type}</option>)}</select></label></div>
@@ -203,13 +225,19 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
         {id:"external-resources",title:"Recursos externos",description:"Enlaces a otras páginas y actividades.",icon:ExternalLink,items:resourceGroups.external,limit:resourceLimit,more:()=>setResourceLimit(value=>value+5),moreLabel:"Mostrar más recursos externos",empty:resources.length&&!resourceGroups.external.length&&(resourceSearch||resourceSubject||resourceType||resourceMode!=="Todos")?"No hay recursos externos con estos filtros.":"Aquí aparecerán los enlaces para consultar y practicar."}
       ].map(group=><section key={group.id} className="sv-stack ss-resource-group" aria-labelledby={`${group.id}-title`}>
         <header className="ss-resource-group-heading"><span className="ss-resource-group-icon" aria-hidden="true"><group.icon size={22}/></span><div><h2 id={`${group.id}-title`}>{group.title}</h2><p>{group.description}</p></div><span className="badge">{group.items.length}</span></header>
-        {group.items.length ? <div className="grid-2">{group.items.slice(0,group.limit).map(resource=>{
-          const pdf=pdfFileForResource(resource,data.files||[]),history=responsesForResource(resource.id,profile,responses,activities),unread=history.some(item=>item.reviewStatus==="reviewed"&&isUnread(profile,item));
-          return <article className="card sv-pad sv-resource ss-resource-card" key={resource.id}><div className="sv-card-top"><Subject value={resource.subject}/><button className="sw-favorite" type="button" disabled={favoriteBusy} aria-pressed={favoriteIds.includes(resource.id)} aria-label={`${favoriteIds.includes(resource.id)?"Quitar de favoritos":"Añadir a favoritos"}: ${resource.title}`} onClick={()=>toggleFavorite(resource.id)}><Star size={19} fill={favoriteIds.includes(resource.id)?"currentColor":"none"}/></button></div><div className="row wrap sw-resource-tags">{returnedResource?.id===resource.id&&<span className="badge">Recurso consultado</span>}{unread&&<span className="badge green">Revisión nueva</span>}<span className="muted sv-small">{pdf?"PDF":resource.type|| (group.id==="class-materials"?"Material de clase":"Web")}</span></div><h3><MathText subject={resource.subject}>{resource.title}</MathText></h3><button className="btn secondary sv-resource-open" data-resource-id={resource.id} onClick={()=>openResource(resource)}>{pdf?"Abrir ficha":group.id==="class-materials"?"Ver material":"Abrir recurso"}<ArrowRight size={16}/></button></article>;
-        })}</div>:<p className="ss-resource-group-empty">{group.empty}</p>}
+        {group.items.length ? <div className="grid-2">{group.items.slice(0,group.limit).map(resource=>renderResourceCard(resource,group.id==="class-materials",returnedResource?.id===resource.id))}</div>:<p className="ss-resource-group-empty">{group.empty}</p>}
         {group.items.length>group.limit&&<button className="btn secondary ss-resource-group-more" onClick={group.more}>{group.moreLabel}</button>}
       </section>)}
       {!matchingResources.length && !returnedResource && (resourceSearch||resourceSubject||resourceType||resourceMode!=="Todos") && <button className="btn secondary sv-practice-clear" onClick={clearResourceFilters}>Limpiar filtros</button>}
+      </section>}
+      {practiceSection === "exam-prep" && <section className="sv-stack sv-practice-panel" aria-label="Preparar exámenes">
+        <header className="ss-resource-group-heading"><span className="ss-resource-group-icon" aria-hidden="true"><NotebookPen size={22}/></span><div><h2>Fichas tipo examen</h2><p>PDF para trabajar en clase o por tu cuenta.</p></div></header>
+        <label className="sv-search ss-practice-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar fichas de examen" value={examSearch} onChange={event=>{setExamSearch(event.target.value);setReturnResource("");setExamLimit(6)}} placeholder="Buscar por título o asignatura…"/></label>
+        <p className="muted ss-result-count" role="status">{matchingExamResources.length} {matchingExamResources.length===1?"ficha":"fichas"}</p>
+        {returnedExamResource&&<p className="sv-practice-return-note" role="status">Última ficha consultada.</p>}
+        {visibleExamResources.length>0&&<div className="grid-2">{visibleExamResources.map(resource=>renderResourceCard(resource,true,returnedExamResource?.id===resource.id))}</div>}
+        {!visibleExamResources.length&&<Empty icon={NotebookPen} title={examResources.length?"Sin fichas con esta búsqueda":"Todavía no hay fichas de examen"}>{examResources.length?"Prueba con otro título o asignatura.":"Las fichas que comparta el docente para preparar exámenes aparecerán aquí."}{examSearch&&<><br/><button className="btn secondary sv-practice-clear" onClick={()=>setExamSearch("")}>Limpiar búsqueda</button></>}</Empty>}
+        {matchingExamResources.length>examLimit&&<button className="btn secondary" onClick={()=>setExamLimit(value=>value+6)}>Mostrar más fichas de examen</button>}
       </section>}
     </>}
     {tab === "Mis clases" && <>

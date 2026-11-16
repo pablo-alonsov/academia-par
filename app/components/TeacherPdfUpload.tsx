@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent } 
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Upload } from "lucide-react";
 import { authorizedFetch } from "@/lib/client-request";
 import { createPdfSharePlan, shareTeacherPdf, type PdfSharePlan, type PdfShareTarget } from "@/lib/share-teacher-pdf";
+import type { ExamMode, PdfCollection } from "@/lib/exam-materials";
 import Dialog from "./Dialog";
 import "./teacher-pdf-upload.css";
 
@@ -14,6 +15,7 @@ const nameFor = (id: string, students: any[]) => students.find(student => studen
 
 export default function TeacherPdfUpload({ students, subjects, act, notify, onClose }: Props) {
   const [file, setFile] = useState<File | null>(null), [title, setTitle] = useState(""), [audience, setAudience] = useState<StudentId | "both">("rocio"), [subject, setSubject] = useState("");
+  const [collection, setCollection] = useState<PdfCollection>("materials"), [examMode, setExamMode] = useState<ExamMode>("either");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [, refreshProgress] = useState(0);
   const planRef = useRef<PdfSharePlan | null>(null), busyRef = useRef(false), mounted = useRef(false);
@@ -78,7 +80,7 @@ export default function TeacherPdfUpload({ students, subjects, act, notify, onCl
     try {
       if (!planRef.current) {
         const studentIds: StudentId[] = audience === "both" ? ["rocio", "alejandra"] : [audience];
-        planRef.current = await createPdfSharePlan({ file, title: title.trim(), subject, studentIds });
+        planRef.current = await createPdfSharePlan({ file, title: title.trim(), subject, studentIds, collection, examMode });
         if (mounted.current) refreshProgress(value => value + 1);
       }
       const currentPlan = planRef.current;
@@ -102,7 +104,7 @@ export default function TeacherPdfUpload({ students, subjects, act, notify, onCl
 
   return <Dialog title="Subir PDF" onClose={close} className={`teacher-pdf-upload${busy ? " is-busy" : ""}`}>
     <form ref={formRef} className="tpu-form" onSubmit={submit} aria-busy={busy}>
-      <p id={`${id}-intro`} className="tpu-intro">Aparecerá en Fichas y PDF de la alumna que elijas.</p>
+      <p id={`${id}-intro`} className="tpu-intro">Aparecerá en {collection === "exam-prep" ? "Preparar exámenes" : "Fichas y PDF"} de {audience === "both" ? "las dos alumnas" : "la alumna que elijas"}.</p>
       <fieldset disabled={busy || locked} className="tpu-fields">
         <label className="field" htmlFor={`${id}-file`}>Archivo PDF
           <input ref={fileInput} id={`${id}-file`} type="file" accept=".pdf,application/pdf" required onChange={selectFile} aria-describedby={`${id}-file-help`}/>
@@ -121,6 +123,14 @@ export default function TeacherPdfUpload({ students, subjects, act, notify, onCl
           <label className="field" htmlFor={`${id}-subject`}>Asignatura
             <select id={`${id}-subject`} value={subject} onChange={event => setSubject(event.target.value)}><option value="">General</option>{subjectNames.filter(name => name !== "General").map(name => <option key={name} value={name}>{name}</option>)}</select>
           </label>
+        </div>
+        <div className="tpu-selects">
+          <label className="field" htmlFor={`${id}-collection`}>Tipo de ficha
+            <select id={`${id}-collection`} value={collection} onChange={event => setCollection(event.target.value as PdfCollection)}><option value="materials">Material de clase</option><option value="exam-prep">Preparar un examen</option></select>
+          </label>
+          {collection === "exam-prep" && <label className="field" htmlFor={`${id}-exam-mode`}>Para trabajar
+            <select id={`${id}-exam-mode`} value={examMode} onChange={event => setExamMode(event.target.value as ExamMode)}><option value="class">En clase</option><option value="independent">Por su cuenta</option><option value="either">En clase o por su cuenta</option></select>
+          </label>}
         </div>
       </fieldset>
       {plan && <div className="tpu-progress" role="status" aria-live="polite" aria-atomic="true">

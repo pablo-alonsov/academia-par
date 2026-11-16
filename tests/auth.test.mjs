@@ -53,6 +53,7 @@ const {initialData}=await import('../lib/seed.ts');
 const {legacySeedBaseline}=await import('../lib/seed-baseline.ts');
 const {createPdfSharePlan,shareTeacherPdf}=await import('../lib/share-teacher-pdf.ts');
 const {groupResourcesBySource,pdfFileForResource}=await import('../lib/resource-files.ts');
+const {isExamPreparation,examModeLabel}=await import('../lib/exam-materials.ts');
 const pin='local-regression-password';
 const pinHash=await hashPin(pin);
 const origin='https://academy.example';
@@ -772,4 +773,70 @@ for(const lost of ['upload','resource'])test(`PDFsharing retry after lost ${lost
  }
  await shareTeacherPdf(plan,{uploadFile:async()=>{throw Error('Completed upload must be skipped');},saveResource:async()=>{throw Error('Completed resource must be skipped');}});assert.equal(bucket.puts,2);
  assertPdfSharingChanges(before,plan);
+});
+
+for(const [studentIds,examMode] of [[['rocio'],'class'],[['alejandra'],'independent'],[['rocio','alejandra'],'either']])test(`PDFsharing exam preparation reaches only ${studentIds.join(' and ')} with ${examMode} context`,async()=>{
+ const teacher=await login('teacher',pin),pupils={rocio:(await login('rocio')).cookie,alejandra:(await login('alejandra')).cookie},bucket=memoryBucket(),before=pdfSharingDomain();
+ const plan=await createPdfSharePlan({file:new File([pdf],'Preparación.pdf',{type:'application/octet-stream'}),title:'Preparar el examen con una ficha',subject:'Matemáticas',studentIds,collection:'exam-prep',examMode});
+ await shareTeacherPdf(plan,pdfSharingDependencies(teacher.cookie));assert.equal(bucket.puts,studentIds.length);
+ const ids=new Set(plan.targets.map(target=>target.resourceId));
+ for(const profile of ['rocio','alejandra']){
+  const snapshot=await (await data.GET(request('/api/data',{cookie:pupils[profile]}))).json(),groups=groupResourcesBySource(snapshot.resources,snapshot.files),exams=groups.materials.filter(isExamPreparation).filter(resource=>ids.has(resource.id));
+  assert.deepEqual(exams.map(resource=>resource.id).sort(),plan.targets.filter(target=>target.studentId===profile).map(target=>target.resourceId).sort());
+  assert.ok(groups.materials.filter(resource=>!isExamPreparation(resource)).every(resource=>!ids.has(resource.id)));
+  for(const resource of exams){assert.equal(resource.examMode,examMode);assert.equal(resource.collection,'exam-prep');assert.equal(resource.studentId,profile);assert.equal(pdfFileForResource(resource,snapshot.files).type,'application/pdf');assert.equal(typeof examModeLabel(resource.examMode),'string');}
+ }
+ for(const target of plan.targets){const other=target.studentId==='rocio'?'alejandra':'rocio';assert.equal((await fileRoute.GET(request(`/api/files/${target.file.id}?view=inline`,{cookie:pupils[other]}),{params:Promise.resolve({id:target.file.id})})).status,403);}
+ const target=plan.targets[0];await mutate(pupils[target.studentId],'upsertResource',{id:target.resourceId,collection:'materials'},403);
+ assertPdfSharingChanges(before,plan);
+});
+
+test('PDFsharing reclassification preserves resource identity, PDF bytes, ownership and all reviewed work and drafts',async()=>{
+ const teacher=await login('teacher',pin),rocio=await login('rocio'),bucket=memoryBucket();
+ const plan=await createPdfSharePlan({file:new File([pdf],'Con historial.pdf',{type:'application/pdf'}),title:'Una ficha con trabajo anterior',subject:'Lengua',studentIds:['rocio']});
+ await shareTeacherPdf(plan,pdfSharingDependencies(teacher.cookie));const target=plan.targets[0];
+ const response=await mutate(rocio.cookie,'useResource',{resourceId:target.resourceId,answer:'Respuesta ya entregada',submissionId:'exam-classification-history'});await mutate(teacher.cookie,'reviewResponse',{id:response.id,feedback:'Conservar esta devolución.',result:'Revisado'});
+ await mutate(rocio.cookie,'saveDraft',{resourceId:target.resourceId,answer:'Otra respuesta todavía sin entregar',clientRevision:'exam-classification-draft'});
+ const before=pdfSharingDomain(),bytes=[...bucket.objects.entries()].map(([key,value])=>[key,Uint8Array.from(value)]),old=JSON.parse(before.resources.find(row=>row.id===target.resourceId).data);
+ const updated=await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,collection:'exam-prep',examMode:'class'});assert.equal(updated.patch.resources[0].id,target.resourceId);assert.equal(updated.patch.resources[0].fileId,target.file.id);
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='resources')assert.deepEqual(after[table],before[table],`${table} must survive reclassification`);
+ assert.deepEqual(after.resources.filter(row=>row.id!==target.resourceId),before.resources.filter(row=>row.id!==target.resourceId));
+ const changed=JSON.parse(after.resources.find(row=>row.id===target.resourceId).data);delete changed.updatedAt;const expected={...old,collection:'exam-prep',examMode:'class'};delete expected.updatedAt;assert.deepEqual(changed,expected);
+ assert.equal(bucket.puts,1);assert.deepEqual([...bucket.objects.entries()],bytes);
+ const pupil=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json(),resource=pupil.resources.find(item=>item.id===target.resourceId);assert.equal(isExamPreparation(resource),true);assert.equal(resource.examMode,'class');assert.equal(pupil.responses.find(item=>item.id===response.id).feedback,'Conservar esta devolución.');assert.equal(pupil.drafts[0].answer,'Otra respuesta todavía sin entregar');
+ await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,collection:'materials'});
+ const returned=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json(),regular=returned.resources.find(item=>item.id===target.resourceId);assert.equal(isExamPreparation(regular),false);assert.equal(regular.examMode,'class');assert.equal(regular.fileId,target.file.id);
+ assert.deepEqual(pdfSharingDomain().responses,before.responses);assert.deepEqual(pdfSharingDomain().drafts,before.drafts);assert.deepEqual(pdfSharingDomain().files,before.files);assert.equal(bucket.puts,1);
+});
+
+test('PDFsharing exam preparation rejects invalid enums, absent or non-PDF files and incompatible owners',async()=>{
+ const teacher=await login('teacher',pin),rocio=await login('rocio');memoryBucket();
+ const dependencies=pdfSharingDependencies(teacher.cookie),plan=await createPdfSharePlan({file:new File([pdf],'Comprobar.pdf',{type:'application/pdf'}),title:'Ficha válida',subject:'Matemáticas',studentIds:['rocio']});await shareTeacherPdf(plan,dependencies);const target=plan.targets[0];
+ const original=sqlite.prepare('SELECT data,updated_at FROM resources WHERE id=?').get(target.resourceId);
+ for(const value of ['exam','',null,3])await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,collection:value},400);
+ for(const value of ['alone','',null,3])await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,examMode:value},400);
+ assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM resources WHERE id=?').get(target.resourceId),original);
+ await mutate(teacher.cookie,'upsertResource',{id:'no-upload-exam',title:'Sin archivo',studentId:'rocio',collection:'exam-prep'},400);
+ await mutate(teacher.cookie,'upsertResource',{id:'external-exam',title:'Solo un enlace',url:'https://example.test/ficha.pdf',type:'PDF',studentId:'rocio',collection:'exam-prep'},400);
+ const image=await dependencies.uploadFile({studentId:'rocio',uploadId:crypto.randomUUID(),resourceId:crypto.randomUUID(),shared:false},new File([png],'No es PDF.pdf',{type:'application/pdf'}));assert.equal(image.type,'image/png');
+ await mutate(teacher.cookie,'upsertResource',{id:'image-exam',title:'Imagen con extensión PDF',studentId:'rocio',fileId:image.id,type:'PDF',collection:'exam-prep'},400);
+ await mutate(teacher.cookie,'upsertResource',{id:'foreign-exam-pdf',title:'Dueña incompatible',studentId:'alejandra',fileId:target.file.id,collection:'exam-prep'},400);
+ await mutate(teacher.cookie,'upsertResource',{id:'invalid-exam-owner',title:'Dueña inválida',studentId:'other',fileId:target.file.id,collection:'exam-prep'},400);
+ await mutate(teacher.cookie,'upsertResource',{id:'invisible-exam-owner',title:'Destinataria incompatible',suggestedStudentIds:['alejandra'],fileId:target.file.id,collection:'exam-prep'},400);
+ await mutate(rocio.cookie,'upsertResource',{id:target.resourceId,collection:'exam-prep',examMode:'independent'},403);
+ await mutate(teacher.cookie,'manageFile',{id:target.file.id,shared:false});await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,collection:'exam-prep'},400);
+ await mutate(teacher.cookie,'manageFile',{id:target.file.id,shared:true,detached:true});await mutate(teacher.cookie,'upsertResource',{id:target.resourceId,collection:'exam-prep'},400);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM resources WHERE id IN (?,?,?,?,?,?)').get('no-upload-exam','external-exam','image-exam','foreign-exam-pdf','invalid-exam-owner','invisible-exam-owner').n,0);
+ for(const table of ['activities','assignments','responses','sessions','observations'])assert.equal(sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,table==='activities'?initialData.activities.length:0);
+});
+
+test('PDFsharing legacy resources keep missing classification fields while readers use safe defaults',async()=>{
+ const teacher=await login('teacher',pin),rocio=await login('rocio');memoryBucket();
+ const file=await pdfSharingDependencies(teacher.cookie).uploadFile({studentId:'rocio',uploadId:crypto.randomUUID(),resourceId:crypto.randomUUID(),shared:false},new File([pdf],'Antigua.pdf',{type:'application/pdf'}));
+ await mutate(teacher.cookie,'upsertResource',{id:'legacy-pdf-classification',studentId:'rocio',title:'PDF anterior sin clasificación',fileId:file.id,type:'PDF'});
+ const before=sqlite.prepare('SELECT data,updated_at FROM resources WHERE id=?').get('legacy-pdf-classification');assert.ok(!Object.hasOwn(JSON.parse(before.data),'collection'));assert.ok(!Object.hasOwn(JSON.parse(before.data),'examMode'));
+ for(let i=0;i<2;i++){
+  const own=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json(),resource=own.resources.find(item=>item.id==='legacy-pdf-classification');assert.equal(isExamPreparation(resource),false);assert.equal(examModeLabel(resource.examMode),'En clase o por tu cuenta');assert.ok(!Object.hasOwn(resource,'collection'));assert.ok(!Object.hasOwn(resource,'examMode'));
+ }
+ assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM resources WHERE id=?').get('legacy-pdf-classification'),before);
 });

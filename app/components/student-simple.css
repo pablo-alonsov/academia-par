@@ -66,9 +66,12 @@
 .ss-resource-group-heading>.badge{flex-shrink:0}
 .ss-resource-group-empty{margin:0;padding:18px 20px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(14px * var(--arp-font-scale,1)));line-height:1.7}
 .ss-resource-group-more{align-self:flex-start}
+.ss-student-lists .sv-practice-sections{grid-template-columns:repeat(3,minmax(0,1fr));max-width:880px}
 .ss-student-lists .ss-result-count{margin:0;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
 .ss-student-lists .ss-home-personalization{margin-top:2px}
 @media(max-width:600px){
+ .ss-student-lists .sv-practice-sections{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .ss-student-lists .sv-practice-sections>button:last-child{grid-column:1/-1}
  .ss-home .ss-main{padding:23px 20px}
  .ss-new-feedback{padding:18px 20px}
  .ss-exam-link{padding:14px 16px;align-items:flex-start}

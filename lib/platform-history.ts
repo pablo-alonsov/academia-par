@@ -4,7 +4,7 @@ export type PlatformRoute = {
     kind: 'activity' | 'resource' | 'student-session' | 'teacher-session';
     id: string;
     assignmentId?: string;
-    source?: 'exercises' | 'resources';
+    source?: 'exercises' | 'resources' | 'exam-prep';
     sourceAssignmentId?: string;
   };
 };
@@ -49,7 +49,7 @@ export function normalizePlatformRoute(value:unknown,profile:string,defaultTab?:
   if(detail&&kinds.includes(detail.kind)&&id(detail.id)) {
     route.detail={kind:detail.kind,id:detail.id};
     if(detail.kind==='activity'&&id(detail.assignmentId))route.detail.assignmentId=detail.assignmentId;
-    if(detail.source==='exercises'||detail.source==='resources')route.detail.source=detail.source;
+    if(detail.source==='exercises'||detail.source==='resources'||detail.source==='exam-prep')route.detail.source=detail.source;
     if(id(detail.sourceAssignmentId))route.detail.sourceAssignmentId=detail.sourceAssignmentId;
   }
   return route;

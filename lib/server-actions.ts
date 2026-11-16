@@ -260,6 +260,8 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   if(action==="upsertResource") {
     const old=data.id?await get("resources",data.id):null;
     const item:RecordData={...old,...data,id:data.id || crypto.randomUUID()};title(item);supportMode(data);
+    if(item.collection!==undefined && !["materials","exam-prep"].includes(item.collection))throw new HttpError(400,"Elige materiales o preparación de exámenes.");
+    if(item.examMode!==undefined && !["class","independent","either"].includes(item.examMode))throw new HttpError(400,"Elige cómo se utilizará el PDF de preparación.");
     if(item.studentId) validateStudent(item.studentId);
     webLink(item.url);
     if(item.fileId) {
@@ -267,8 +269,14 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
       if(file.purpose==="avatar")throw new HttpError(400,"Las fotos de perfil no son materiales de clase.");
       if(file.shared!==true||file.detached===true)throw new HttpError(400,"Marca el archivo como compartido y disponible antes de añadirlo a la biblioteca.");
       if(item.studentId && file.studentId!==item.studentId)throw new HttpError(400,"El archivo pertenece a otra alumna.");
+      if(item.collection==="exam-prep"){
+        if(file.type!=="application/pdf")throw new HttpError(400,"La preparación de exámenes requiere un PDF subido y verificado.");
+        validateStudent(file.studentId);
+        if(!allowedContent(item,file.studentId))throw new HttpError(400,"La preparación debe estar disponible para la alumna propietaria del PDF.");
+      }
       trackChange("files",file.id);
     }
+    else if(item.collection==="exam-prep")throw new HttpError(400,"La preparación de exámenes requiere un PDF subido y verificado.");
     await put("resources",item);return {id:item.id};
   }
   if(action==="useResource") {
