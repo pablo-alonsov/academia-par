@@ -3,6 +3,8 @@ import { env } from "cloudflare:workers";
 export type Profile = "teacher" | "rocio" | "alejandra";
 export const PROFILES = ["teacher", "rocio", "alejandra"] as const;
 const COOKIE = "arp_access";
+export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+export type AccessSession = {profile: Profile; expiresAt: number};
 export function database(): D1Database {
   if (!env.DB) throw new HttpError(503, "La base de datos no está disponible.");
   return env.DB;
@@ -37,13 +39,16 @@ export async function verifyPin(pin: string, stored: string) {
   let different=0; for(let i=0;i<actual.length;i++) different|=actual.charCodeAt(i)^expected.charCodeAt(i);
   return different===0;
 }
-export async function currentProfile(request: Request): Promise<Profile | null> {
+export async function currentSession(request: Request): Promise<AccessSession | null> {
   const token=request.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(COOKIE+"="))?.slice(COOKIE.length+1);
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   const row=await database().prepare("SELECT profile, expires_at FROM app_sessions WHERE token_hash = ?").bind(await digest(token)).first<{profile:Profile,expires_at:number}>();
-  if (!row || row.expires_at<Date.now() || !PROFILES.includes(row.profile)) return null;
-  return row.profile;
+  // This stored deadline is absolute. Reading/using an access token never
+  // extends it, including tokens created under the earlier 12-hour policy.
+  if (!row || !Number.isFinite(row.expires_at) || row.expires_at<=Date.now() || !PROFILES.includes(row.profile)) return null;
+  return {profile: row.profile, expiresAt: row.expires_at};
 }
+export async function currentProfile(request: Request): Promise<Profile | null> { return (await currentSession(request))?.profile || null; }
 export async function requireProfile(request: Request) {
   const profile=await currentProfile(request); if(!profile) throw new HttpError(401,"Elige tu perfil para continuar.");
   const expected=request.headers.get("X-ARP-Profile");
@@ -51,15 +56,16 @@ export async function requireProfile(request: Request) {
   return profile;
 }
 export function teacherOnly(profile: Profile) { if(profile!=="teacher") throw new HttpError(403,"Esta acción es exclusiva del panel docente."); }
-export function cookie(request:Request,token:string,maxAge=43200) {
+export function cookie(request:Request,token:string,maxAge=SESSION_MAX_AGE_SECONDS) {
   return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${new URL(request.url).protocol==="https:"?"; Secure":""}`;
 }
 export async function createSession(request:Request,profile:Profile) {
   const token=hex(crypto.getRandomValues(new Uint8Array(32)));
+  const expiresAt=Date.now()+SESSION_MAX_AGE_SECONDS*1000;
   // Access belongs to this app's random token, independent of external sign-in.
   // Retain the nullable legacy column so existing database migrations stay intact.
-  await database().prepare("INSERT INTO app_sessions (token_hash,profile,expires_at,platform_user_id) VALUES (?,?,?,NULL)").bind(await digest(token),profile,Date.now()+43200000).run();
-  return token;
+  await database().prepare("INSERT INTO app_sessions (token_hash,profile,expires_at,platform_user_id) VALUES (?,?,?,NULL)").bind(await digest(token),profile,expiresAt).run();
+  return {token,expiresAt};
 }
 export async function deleteSession(request:Request) {
   const token=request.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(COOKIE+"="))?.slice(COOKIE.length+1);

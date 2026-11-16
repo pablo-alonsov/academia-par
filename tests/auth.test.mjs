@@ -73,12 +73,12 @@ async function login(profile,providedPin) {const response=await auth.POST(reques
 
 test('anonymous HTTPS visitors choose a pupil profile without any platform identity',async()=>{
   const initial=await auth.GET(request('/api/auth'));
-  assert.equal(initial.status,200);assert.deepEqual(await initial.json(),{profile:null});
+  assert.equal(initial.status,200);const anonymous=await initial.json();assert.equal(anonymous.profile,null);assert.equal(anonymous.expiresAt,null);assert.ok(Number.isFinite(anonymous.serverNow));
   assert.equal((await data.GET(request('/api/data'))).status,401);
   for(const profile of ['rocio','alejandra']) {
     const {response,cookie}=await login(profile);
-    assert.equal(response.status,200);assert.deepEqual(await response.json(),{profile});
-    assert.match(response.headers.get('set-cookie'),/HttpOnly; SameSite=Strict; Max-Age=43200; Secure/);
+    assert.equal(response.status,200);const access=await response.json();assert.equal(access.profile,profile);assert.ok(Number.isFinite(access.serverNow));assert.ok(access.expiresAt>access.serverNow);
+    assert.match(response.headers.get('set-cookie'),/HttpOnly; SameSite=Strict; Max-Age=86400; Secure/);
     const snapshot=await data.GET(request('/api/data',{cookie}));assert.equal(snapshot.status,200);
     assert.deepEqual((await snapshot.json()).students.map(s=>s.id),[profile]);
   }
@@ -105,7 +105,7 @@ test('token authorization is independent of missing or changing external identit
   // Legacy stored identity remains harmless when the platform audience changes.
   sqlite.prepare('UPDATE app_sessions SET platform_user_id=? WHERE token_hash=?').run('legacy-platform-id',tokenHash);
   for(const identity of [undefined,'different-platform-id']) {
-    const result=await auth.GET(request('/api/auth',{cookie,identity}));assert.equal(result.status,200);assert.deepEqual(await result.json(),{profile:'rocio'});
+    const result=await auth.GET(request('/api/auth',{cookie,identity}));assert.equal(result.status,200);const access=await result.json();assert.equal(access.profile,'rocio');assert.equal(access.expiresAt,row.expires_at);assert.ok(Number.isFinite(access.serverNow));
   }
   const forgedCookie='arp_access='+token.slice(0,-1)+(token.endsWith('a')?'b':'a');
   assert.equal((await data.GET(request('/api/data',{cookie:forgedCookie}))).status,401);
@@ -121,6 +121,87 @@ test('same-origin protection, revocation and teacher rate limits remain enforced
   assert.equal((await login('teacher','wrong')).response.status,429);
   assert.equal((await login('teacher',pin)).response.status,429);
 });
+
+async function controlledClock(run){
+  const RealDate=Date;let now=RealDate.parse('2026-11-16T08:00:00.000Z');
+  globalThis.Date=class extends RealDate{constructor(...args){if(args.length)super(...args);else super(now);}static now(){return now;}};
+  try{return await run({now:()=>now,set:value=>{now=value;}});}finally{globalThis.Date=RealDate;}
+}
+
+test('all profiles receive an absolute 24-hour deadline and reads never renew either cookie or server expiry',async()=>controlledClock(async clock=>{
+  const ttl=24*60*60*1000,base=clock.now();
+  for(const profile of ['rocio','alejandra','teacher']){
+    clock.set(base);
+    const entered=await login(profile,profile==='teacher'?pin:undefined),body=await entered.response.json(),deadline=base+ttl;
+    assert.equal(entered.response.status,200);assert.deepEqual(body,{profile,expiresAt:deadline,serverNow:base});
+    assert.match(entered.response.headers.get('set-cookie'),/Max-Age=86400(?:;|$)/);
+    const tokenHash=await digest(entered.cookie.split('=')[1]),saved=sqlite.prepare('SELECT * FROM app_sessions WHERE token_hash=?').get(tokenHash);
+    assert.equal(saved.expires_at,deadline);
+    for(const now of [base+60000,deadline-1]){
+      clock.set(now);
+      const read=await auth.GET(request('/api/auth',{cookie:entered.cookie}));
+      assert.deepEqual(await read.json(),{profile,expiresAt:deadline,serverNow:now});assert.equal(read.headers.get('set-cookie'),null);
+      const snapshot=await data.GET(request('/api/data',{cookie:entered.cookie}));assert.equal(snapshot.status,200);assert.equal(snapshot.headers.get('set-cookie'),null);
+      assert.deepEqual(sqlite.prepare('SELECT * FROM app_sessions WHERE token_hash=?').get(tokenHash),saved);
+    }
+    assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie,expectedProfile:profile==='rocio'?'alejandra':'rocio'}))).status,409);
+    for(const now of [deadline,deadline+1]){
+      clock.set(now);
+      const expired=await auth.GET(request('/api/auth',{cookie:entered.cookie}));assert.deepEqual(await expired.json(),{profile:null,expiresAt:null,serverNow:now});assert.equal(expired.headers.get('set-cookie'),null);
+      assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie}))).status,401);
+      assert.equal((await action.POST(request('/api/action',{cookie:entered.cookie,expectedProfile:'alejandra',body:{action:'saveDoubt',data:{question:'Must not be saved after expiry'}}}))).status,401);
+      assert.deepEqual(sqlite.prepare('SELECT * FROM app_sessions WHERE token_hash=?').get(tokenHash),saved);
+    }
+  }
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM doubts').get().n,0);
+}));
+
+test('re-entering after expiry creates a fresh 24-hour token and teacher access still requires the password',async()=>controlledClock(async clock=>{
+  const ttl=24*60*60*1000,base=clock.now();
+  for(const profile of ['rocio','alejandra','teacher']){
+    clock.set(base);
+    const first=await login(profile,profile==='teacher'?pin:undefined),oldHash=await digest(first.cookie.split('=')[1]);
+    clock.set(base+ttl+1000);
+    if(profile==='teacher'){
+      const rejected=await auth.POST(request('/api/auth',{cookie:first.cookie,body:{profile,pin:'wrong'}}));assert.equal(rejected.status,401);
+      assert.equal((await (await auth.GET(request('/api/auth',{cookie:first.cookie}))).json()).profile,null);
+    }
+    const renewed=await auth.POST(request('/api/auth',{cookie:first.cookie,body:{profile,...(profile==='teacher'?{pin}:{}),expiresAt:base+10*ttl,issuedAt:base-ttl}}));
+    assert.equal(renewed.status,200);assert.deepEqual(await renewed.json(),{profile,expiresAt:clock.now()+ttl,serverNow:clock.now()});
+    const freshCookie=renewed.headers.get('set-cookie').split(';')[0];assert.notEqual(freshCookie,first.cookie);
+    assert.equal(sqlite.prepare('SELECT token_hash FROM app_sessions WHERE token_hash=?').get(oldHash),undefined);
+    assert.equal((await data.GET(request('/api/data',{cookie:first.cookie}))).status,401);
+    assert.equal((await data.GET(request('/api/data',{cookie:freshCookie,expectedProfile:profile}))).status,200);
+  }
+}));
+
+test('existing shorter sessions retain their stored deadline and expire exactly at that legacy boundary',async()=>controlledClock(async clock=>{
+  const entered=await login('rocio'),tokenHash=await digest(entered.cookie.split('=')[1]),legacyDeadline=clock.now()+12*60*60*1000;
+  sqlite.prepare('UPDATE app_sessions SET expires_at=? WHERE token_hash=?').run(legacyDeadline,tokenHash);
+  clock.set(legacyDeadline-1);
+  assert.deepEqual(await (await auth.GET(request('/api/auth',{cookie:entered.cookie}))).json(),{profile:'rocio',expiresAt:legacyDeadline,serverNow:clock.now()});
+  assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie}))).status,200);
+  assert.equal(sqlite.prepare('SELECT expires_at FROM app_sessions WHERE token_hash=?').get(tokenHash).expires_at,legacyDeadline);
+  clock.set(legacyDeadline);
+  assert.deepEqual(await (await auth.GET(request('/api/auth',{cookie:entered.cookie}))).json(),{profile:null,expiresAt:null,serverNow:clock.now()});
+  assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie}))).status,401);
+}));
+
+test('expiry, re-entry and explicit revocation preserve saved drafts and keep stale-profile guards',async()=>controlledClock(async clock=>{
+  const entered=await login('rocio'),access=await entered.response.json();
+  const saved=await mutate(entered.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'Trabajo guardado antes del descanso',comment:'Retomar esta explicación',clientRevision:'expiry-draft-version',baseRevision:''});
+  const original=sqlite.prepare('SELECT data,updated_at FROM drafts WHERE id=?').get(saved.id);
+  clock.set(access.expiresAt);
+  assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie}))).status,401);
+  assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM drafts WHERE id=?').get(saved.id),original);
+  const fresh=await login('rocio'),freshAccess=await fresh.response.json();assert.equal(freshAccess.expiresAt,clock.now()+86400000);
+  assert.equal((await data.GET(request('/api/data',{cookie:fresh.cookie,expectedProfile:'alejandra'}))).status,409);
+  const own=await (await data.GET(request('/api/data',{cookie:fresh.cookie,expectedProfile:'rocio'}))).json();assert.equal(own.drafts.find(row=>row.id===saved.id).answer,'Trabajo guardado antes del descanso');
+  const removed=await auth.DELETE(request('/api/auth',{cookie:fresh.cookie}));assert.deepEqual(await removed.json(),{profile:null,expiresAt:null});assert.match(removed.headers.get('set-cookie'),/Max-Age=0(?:;|$)/);
+  assert.equal((await data.GET(request('/api/data',{cookie:fresh.cookie}))).status,401);
+  assert.deepEqual(await (await auth.GET(request('/api/auth',{cookie:fresh.cookie}))).json(),{profile:null,expiresAt:null,serverNow:clock.now()});
+  assert.deepEqual(sqlite.prepare('SELECT data,updated_at FROM drafts WHERE id=?').get(saved.id),original);
+}));
 
 async function examAction(cookie,name,item) {return action.POST(request('/api/action',{cookie,body:{action:name,data:item}}));}
 test('each pupil can create, update and delete only her own calendar exams',async()=>{
@@ -161,7 +242,7 @@ test('pupil exam payloads cannot inject metadata or elevate permissions; teacher
   assert.equal((await examAction(rocio.cookie,'upsertExam',{id:'clean-new-entry',title:'Examen propio',date:'2026-11-22',notes:'INJECTED',skillIds:['r-tildes'],role:'teacher'})).status,200);
   stored=JSON.parse(sqlite.prepare("SELECT data FROM exams WHERE id='clean-new-entry'").get().data);
   assert.deepEqual(Object.keys(stored).sort(),['date','id','studentId','subject','title','topics','updatedAt'].sort());
-  assert.deepEqual(await (await auth.GET(request('/api/auth',{cookie:rocio.cookie}))).json(),{profile:'rocio'});
+  assert.equal((await (await auth.GET(request('/api/auth',{cookie:rocio.cookie}))).json()).profile,'rocio');
   assert.equal((await action.POST(request('/api/action',{cookie:rocio.cookie,body:{action:'upsertSession',data:{studentId:'rocio',date:'2026-11-22',status:'preparada'}}}))).status,403);
   assert.equal((await examAction(rocio.cookie,'deleteExam',{id:'teacher-owned-entry'})).status,200);
 });

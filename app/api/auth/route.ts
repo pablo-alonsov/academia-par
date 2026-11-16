@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
-import { cleanString, cookie, createSession, currentProfile, database, deleteSession, digest, fail, HttpError, json, PROFILES, readBody, sameOrigin, verifyPin, type Profile } from "@/lib/server-auth";
+import { cleanString, cookie, createSession, currentSession, database, deleteSession, digest, fail, HttpError, json, PROFILES, readBody, sameOrigin, verifyPin, type Profile } from "@/lib/server-auth";
 import { seed } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
-export async function GET(request:Request) { try { return json({profile:await currentProfile(request)}); } catch(error) {return fail(error);} }
+export async function GET(request:Request) { try { const session=await currentSession(request);return json({...(session || {profile:null,expiresAt:null}),serverNow:Date.now()}); } catch(error) {return fail(error);} }
 export async function POST(request:Request) {
   try {
     sameOrigin(request);
@@ -23,10 +23,10 @@ export async function POST(request:Request) {
     }
     await seed();
     await deleteSession(request);
-    const token=await createSession(request,profile as Profile);
-    return json({profile},200,{"Set-Cookie":cookie(request,token)});
+    const {token,expiresAt}=await createSession(request,profile as Profile);
+    return json({profile,expiresAt,serverNow:Date.now()},200,{"Set-Cookie":cookie(request,token)});
   } catch(error) {return fail(error);}
 }
 export async function DELETE(request:Request) {
-  try {sameOrigin(request);await deleteSession(request);return json({profile:null},200,{"Set-Cookie":cookie(request,"",0)});} catch(error){return fail(error);}
+  try {sameOrigin(request);await deleteSession(request);return json({profile:null,expiresAt:null},200,{"Set-Cookie":cookie(request,"",0)});} catch(error){return fail(error);}
 }

@@ -19,7 +19,8 @@ try {
   const shell=await fetch(origin,{redirect:'manual'});
   assert.equal(shell.status,200,'Anonymous shell must not redirect to ChatGPT sign-in');
   const html=await shell.text();assert.match(html, /academia PAR/i);assert.doesNotMatch(html,/Inicia sesión para acceder/);
-  assert.deepEqual((await api('rocio','/api/auth')).data,{profile:null});
+  const anonymous=(await api('rocio','/api/auth')).data;
+  assert.equal(anonymous.profile,null);assert.equal(anonymous.expiresAt,null);assert.ok(Number.isFinite(anonymous.serverNow));
   assert.equal((await api('rocio','/api/data')).status,401);
   for(const profile of ['rocio','alejandra']) {
     const entered=await api(profile,'/api/auth',{body:{profile}});assert.equal(entered.status,200);assert.equal(entered.data.profile,profile);

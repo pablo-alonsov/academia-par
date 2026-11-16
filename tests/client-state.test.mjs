@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyDataPatch} from '../lib/data-patch.ts';
-import {authorizedFetch,setSessionRecovery,invalidateSessionRequests,setRequestProfile} from '../lib/client-request.ts';
+import {authorizedFetch,setSessionExpiryHandler,setSessionAccessCheck,invalidateSessionRequests,setRequestProfile} from '../lib/client-request.ts';
 import {examSubjectsForStudent,retainedExamSubject} from '../lib/exam-subjects.ts';
 
 test('subject options match each pupil and preserve existing custom subjects',()=>{
@@ -22,50 +22,117 @@ test('saving a row preserves the catalogue, other pupils and prior evidence',()=
   assert.deepEqual(applyDataPatch(next,{}, {drafts:['d1']}).drafts,[]);
 });
 
-test('expired access pauses and retries the same request once after recovery',async()=>{
-  const original=globalThis.fetch;const calls=[];let recovered=0;
-  globalThis.fetch=async(url,options)=>{calls.push([url,options.body]);return new Response('{}',{status:calls.length===1?401:200})};
-  setSessionRecovery(async()=>{recovered++});
-  try{const response=await authorizedFetch('/api/action',{method:'POST',body:'unchanged draft'});assert.equal(response.status,200);assert.equal(recovered,1);assert.deepEqual(calls[0],calls[1]);}
-  finally{globalThis.fetch=original;setSessionRecovery()}
+function active(profile='rocio') {
+  invalidateSessionRequests();setRequestProfile(profile);setSessionAccessCheck(()=>true);setSessionExpiryHandler();
+}
+function resetAccess() {
+  invalidateSessionRequests();setRequestProfile(null);setSessionAccessCheck();setSessionExpiryHandler();
+}
+
+test('401 closes access once and never replays a write or consumes its payload',async()=>{
+  const original=globalThis.fetch,calls=[];let expired=0;active();
+  globalThis.fetch=async(url,options)=>{calls.push([url,options.body]);return new Response('{}',{status:401})};
+  setSessionExpiryHandler(()=>expired++);
+  const payload=JSON.stringify({answer:'6/8',submissionId:'stable-attempt'});
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:payload}),error=>error.status===401&&/acceso ha caducado/.test(error.message));
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:payload}),error=>error.status===401);
+    assert.deepEqual(calls,[['/api/action',payload]]);assert.equal(expired,1);
+  }finally{globalThis.fetch=original;resetAccess()}
 });
 
-test('declining re-entry never submits again or consumes the draft',async()=>{
-  const original=globalThis.fetch;let calls=0;
-  globalThis.fetch=async()=>{calls++;return new Response('{}',{status:401})};
-  setSessionRecovery(async()=>{throw Error('Keep editing')});
-  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'draft'}),/Keep editing/);assert.equal(calls,1)}
-  finally{globalThis.fetch=original;setSessionRecovery()}
+test('no selected profile blocks new reads and editor cleanup writes before fetch',async()=>{
+  const original=globalThis.fetch;let calls=0;resetAccess();
+  globalThis.fetch=async()=>{calls++;return new Response('{}')};
+  try{
+    await assert.rejects(authorizedFetch('/api/data'),error=>error.status===401);
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'preserved local draft'}),error=>error.status===401);
+    assert.equal(calls,0);
+  }finally{globalThis.fetch=original;resetAccess()}
 });
 
-test('a late unauthorized response cannot reopen or resubmit under a different profile',async()=>{
-  const original=globalThis.fetch;let calls=0,recoveries=0,finish;
+test('an elapsed local deadline closes access before any network request',async()=>{
+  const original=globalThis.fetch;let calls=0,expired=0;active();
+  globalThis.fetch=async()=>{calls++;return new Response('{}')};
+  setSessionAccessCheck(()=>false);setSessionExpiryHandler(()=>expired++);
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),error=>error.status===401);
+    await assert.rejects(authorizedFetch('/api/data'),error=>error.status===401);
+    assert.equal(calls,0);assert.equal(expired,1);
+  }finally{globalThis.fetch=original;resetAccess()}
+});
+
+test('a late unauthorized response cannot expire or resubmit under another profile',async()=>{
+  const original=globalThis.fetch;let calls=0,expired=0,finish;active();
   globalThis.fetch=async()=>{calls++;return new Promise(resolve=>{finish=resolve})};
-  setSessionRecovery(async()=>{recoveries++});
-  try{const pending=authorizedFetch('/api/action',{method:'POST',body:'Rocio draft'});invalidateSessionRequests();finish(new Response('{}',{status:401}));await assert.rejects(pending,/perfil ha cambiado/);assert.equal(calls,1);assert.equal(recoveries,0)}
-  finally{globalThis.fetch=original;setSessionRecovery()}
+  setSessionExpiryHandler(()=>expired++);
+  try{
+    const pending=authorizedFetch('/api/action',{method:'POST',body:'Rocio draft'});
+    setRequestProfile('alejandra');finish(new Response('{}',{status:401}));
+    await assert.rejects(pending,error=>error.status===409&&/perfil ha cambiado/.test(error.message));
+    assert.equal(calls,1);assert.equal(expired,0);
+  }finally{globalThis.fetch=original;resetAccess()}
 });
 
-test('changing profile while re-entry is open cancels the retry',async()=>{
-  const original=globalThis.fetch;let calls=0;
-  globalThis.fetch=async()=>{calls++;return new Response('{}',{status:401})};
-  setSessionRecovery(async()=>{invalidateSessionRequests()});
-  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'previous profile'}),/perfil ha cambiado/);assert.equal(calls,1)}
-  finally{globalThis.fetch=original;setSessionRecovery()}
+test('a successful response from the invalidated session is ignored too',async()=>{
+  const original=globalThis.fetch;let finish;active('teacher');
+  globalThis.fetch=async()=>new Promise(resolve=>{finish=resolve});
+  try{
+    const pending=authorizedFetch('/api/data');invalidateSessionRequests();setRequestProfile(null);
+    finish(new Response(JSON.stringify({privateNotes:['old panel']})));
+    await assert.rejects(pending,error=>error.status===409);
+  }finally{globalThis.fetch=original;resetAccess()}
 });
 
-test('requests carry the expected profile and never silently retry a cookie scope mismatch',async()=>{
-  const original=globalThis.fetch;let calls=0,received;
+test('the deadline is checked again before returning an in-flight response',async()=>{
+  const original=globalThis.fetch;let finish,valid=true,expired=0;active();
+  globalThis.fetch=async()=>new Promise(resolve=>{finish=resolve});
+  setSessionAccessCheck(()=>valid);setSessionExpiryHandler(()=>expired++);
+  try{
+    const pending=authorizedFetch('/api/action',{method:'POST',body:'same attempt'});valid=false;
+    finish(new Response('{}'));
+    await assert.rejects(pending,error=>error.status===401);assert.equal(expired,1);
+  }finally{globalThis.fetch=original;resetAccess()}
+});
+
+test('a fresh explicit profile selection permits only its own new request',async()=>{
+  const original=globalThis.fetch,calls=[];active();
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:options.body,profile:options.headers.get('X-ARP-Profile')});return new Response('{}',{status:calls.length===1?401:200})};
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'old Rocio attempt'}));
+    setRequestProfile('alejandra');
+    assert.equal((await authorizedFetch('/api/action',{method:'POST',body:'new Alejandra attempt'})).status,200);
+    assert.deepEqual(calls,[{url:'/api/action',body:'old Rocio attempt',profile:'rocio'},{url:'/api/action',body:'new Alejandra attempt',profile:'alejandra'}]);
+  }finally{globalThis.fetch=original;resetAccess()}
+});
+
+test('requests carry expected profile and close on a cookie scope mismatch without retrying',async()=>{
+  const original=globalThis.fetch,oldWindow=globalThis.window;let calls=0,received,changes=0;active();
+  globalThis.window=new EventTarget();globalThis.window.addEventListener('arp:profile-changed',()=>changes++);
   globalThis.fetch=async(url,options)=>{calls++;received=options.headers.get('X-ARP-Profile');return new Response('{}',{status:409,headers:{'X-ARP-Profile-Changed':'true'}})};
-  setRequestProfile('rocio');
-  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'draft'}),/perfil ha cambiado/);assert.equal(received,'rocio');assert.equal(calls,1)}
-  finally{globalThis.fetch=original;setRequestProfile(null)}
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'draft'}),error=>error.status===409);
+    await assert.rejects(authorizedFetch('/api/data'),error=>error.status===401);
+    assert.equal(received,'rocio');assert.equal(calls,1);assert.equal(changes,1);
+  }finally{globalThis.fetch=original;if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;resetAccess()}
 });
-test('hidden pages persist small requests with keepalive and do not open a password dialog',async()=>{
-  const original=globalThis.fetch,previousDocument=globalThis.document;let keepalive,recovered=0;
+
+test('hidden small writes keep keepalive but expire without any reauthentication',async()=>{
+  const original=globalThis.fetch,previousDocument=globalThis.document;let keepalive,expired=0,calls=0;active();
   globalThis.document={visibilityState:'hidden'};
-  globalThis.fetch=async(url,options)=>{keepalive=options.keepalive;return new Response('{}',{status:401})};
-  setSessionRecovery(async()=>{recovered++});
-  try{await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),/acceso ha caducado/);assert.equal(keepalive,true);assert.equal(recovered,0)}
-  finally{globalThis.fetch=original;setSessionRecovery();if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+  globalThis.fetch=async(url,options)=>{calls++;keepalive=options.keepalive;return new Response('{}',{status:401})};
+  setSessionExpiryHandler(()=>expired++);
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),error=>error.status===401);
+    assert.equal(keepalive,true);assert.equal(expired,1);assert.equal(calls,1);
+  }finally{globalThis.fetch=original;if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;resetAccess()}
+});
+
+test('a temporary network failure preserves access and never retries in the background',async()=>{
+  const original=globalThis.fetch;let calls=0,expired=0;active();
+  globalThis.fetch=async()=>{calls++;throw Error('offline')};setSessionExpiryHandler(()=>expired++);
+  try{
+    await assert.rejects(authorizedFetch('/api/action',{method:'POST',body:'local copy'}),error=>error.status===0);
+    assert.equal(calls,1);assert.equal(expired,0);
+  }finally{globalThis.fetch=original;resetAccess()}
 });
