@@ -401,6 +401,38 @@ test('submissions are idempotent under concurrent retries and remove only the su
   await mutate(rocio.cookie,'submitResponse',{...body,submissionId:'new-submission-002',draftRevision:'phone-tab-version'});assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM drafts').get().n,1,'different submitted version cannot delete newer work');
   assert.ok(!Object.hasOwn(first.patch.activities||{},'answer'));
 });
+test('classroom answers save without a self-assessment and retain normal grading, revision guards and ownership',async()=>{
+  const rocio=await login('rocio'),alejandra=await login('alejandra');
+  const saved=await mutate(rocio.cookie,'saveDraft',{activityId:'r-tonica-telefono',answer:'lé',clientRevision:'classroom-answer-version'});
+  const payload={activityId:'r-tonica-telefono',answer:'lé',submissionId:'classroom-answer',draftRevision:'classroom-answer-version'};
+  const one=await mutate(rocio.cookie,'submitResponse',payload),again=await mutate(rocio.cookie,'submitResponse',payload);
+  assert.equal(one.id,again.id);assert.equal(again.alreadySubmitted,true);
+  const response=one.patch.responses[0];assert.equal(response.selfAssessment,'');assert.equal(response.autoResult,'correct');assert.equal(response.reviewStatus,'pending');
+  assert.deepEqual(one.removed.drafts,[saved.id]);assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,1);
+  const open=await mutate(rocio.cookie,'submitResponse',{activityId:'r-detective-tildes',answer:'Clasificación y explicación revisadas en clase.',selfAssessment:'',submissionId:'classroom-open-answer'});
+  assert.equal(open.patch.responses[0].selfAssessment,'');assert.equal(open.autoResult,null);assert.equal(open.reviewStatus,'pending');
+  await mutate(rocio.cookie,'submitResponse',{activityId:'r-tonica-telefono',answer:'lé',selfAssessment:'Inventada',submissionId:'classroom-invalid-report'},400);
+  await mutate(rocio.cookie,'submitResponse',{activityId:'r-tonica-telefono',answer:'',submissionId:'classroom-empty-answer'},400);
+  await mutate(alejandra.cookie,'submitResponse',{activityId:'r-tonica-telefono',answer:'lé',submissionId:'classroom-foreign-answer'},403);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM responses').get().n,2);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM observations').get().n,0);
+  const pupil=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.ok(pupil.skills.every(skill=>!skill.lastCheck));
+});
+
+test('existing response metadata and attachment-only paper work stay valid with the simpler classroom editor',async()=>{
+  const rocio=await login('rocio');
+  const steps={data:'Palabras',question:'Tildes',calculation:'Clasificación razonada',unitsAnswer:'Texto revisado'};
+  insertRecord('files',{id:'classroom-legacy-file',studentId:'rocio',name:'Trabajo anterior.pdf',type:'application/pdf',shared:true,purpose:'teaching'});
+  const payload={activityId:'r-detective-tildes',answer:'Explicación anterior',selfAssessment:'some_doubt',comment:'Comentario guardado anteriormente',procedure:steps,hintsUsed:[0],fileIds:['classroom-legacy-file'],submissionId:'classroom-legacy-response'};
+  const saved=await mutate(rocio.cookie,'submitResponse',payload),response=saved.patch.responses[0];
+  assert.equal(response.selfAssessment,'Con alguna duda');assert.equal(response.comment,payload.comment);assert.deepEqual(response.procedure,steps);assert.deepEqual(response.hintsUsed,[0]);assert.deepEqual(response.fileIds,payload.fileIds);
+  const raw=sqlite.prepare('SELECT data FROM responses WHERE id=?').get(saved.id).data;
+  const replay=await mutate(rocio.cookie,'submitResponse',{activityId:payload.activityId,submissionId:payload.submissionId});assert.equal(replay.alreadySubmitted,true);assert.equal(sqlite.prepare('SELECT data FROM responses WHERE id=?').get(saved.id).data,raw);
+  const paper=await mutate(rocio.cookie,'submitResponse',{activityId:'r-dictado',answer:'',fileIds:['classroom-legacy-file'],submissionId:'classroom-legacy-paper'});
+  assert.equal(paper.patch.responses[0].selfAssessment,'');assert.deepEqual(paper.patch.responses[0].fileIds,['classroom-legacy-file']);assert.equal(paper.autoResult,null);assert.equal(paper.reviewStatus,'pending');
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM observations').get().n,0);
+});
+
 test('a procedure-only open response and resource use await review and preserve structured work',async()=>{
   const alejandra=await login('alejandra');const steps={data:'120 g; 40 cm³',question:'Densidad',calculation:'120 / 40',unitsAnswer:'3 g/cm³'};
   const draft=await mutate(alejandra.cookie,'saveDraft',{activityId:'a-densidad-procedimiento',procedure:steps,clientRevision:'science-draft'});

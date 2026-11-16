@@ -127,6 +127,8 @@
 .teacher-procedure{margin:15px 0;display:grid;gap:13px;border-left:3px solid var(--primary);padding-left:14px}
 .teacher-procedure dt{font-weight:650;font-size:max(var(--arp-font-min, 0px), calc(12px * var(--arp-font-scale, 1)))}
 .teacher-procedure dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:max(var(--arp-font-min, 0px), calc(13px * var(--arp-font-scale, 1)))}
+.teacher-views .summary-grid-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(min-width:601px) and (max-width:1100px){.teacher-views .summary-grid-three>.summary-card:last-child{grid-column:1/-1}}
 
 @media(min-width:1280px){
   .teacher-views .session-item{grid-template-columns:auto minmax(0,1fr) auto;align-items:center}

@@ -95,3 +95,35 @@
     align-items: flex-start;
   }
 }
+
+/* A short in-person exercise needs only its instruction, answer and main action. */
+.sw-classroom-work{gap:20px}
+.sw-classroom-work .sv-detail-heading h1{margin-bottom:0}
+.sw-classroom-work .sv-detail-heading h1:focus:not(:focus-visible){outline:none}
+.sw-classroom-form{display:flex;flex-direction:column;gap:18px}
+.sw-classroom-instructions{min-width:0}
+.sw-classroom-instructions .sv-instructions{margin:0;font-size:max(var(--arp-font-min,0px),calc(16px * var(--arp-font-scale,1)));line-height:1.75}
+.sw-classroom-instructions>.btn{margin-top:16px}
+.sw-classroom-work .sw-editor-fields{gap:12px}
+.sw-classroom-work .sw-editor-fields>.field{margin-bottom:0}
+.sw-classroom-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px}
+.sw-classroom-actions>.btn{min-height:46px}
+.sw-classroom-actions>.btn.primary{min-width:190px}
+.sw-classroom-work .sw-response-saving{display:flex;flex-direction:column;gap:12px;min-width:0}
+.sw-classroom-work .sw-save-status{margin:0;font-weight:400;color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(12px * var(--arp-font-scale,1)))}
+.sw-classroom-work .sw-save-problem p{margin:0 0 10px}
+.sw-classroom-work .sw-exercise-details{margin-top:0}
+.sw-classroom-work .sw-exercise-details p{margin-top:12px}
+.sw-answer-result{display:flex;align-items:flex-start;gap:10px;border-radius:10px;padding:14px 16px;background:var(--surface2);color:var(--text);border-left:3px solid var(--green,#047857)}
+.sw-answer-result.review{border-left-color:var(--amber,#92400e)}
+.sw-answer-result>svg{flex-shrink:0;margin-top:3px}
+.sw-answer-result>div{min-width:0}
+.sw-answer-result strong{display:block;margin-bottom:4px;overflow-wrap:anywhere}
+.sw-answer-result p{margin:0;line-height:1.6}
+@media(max-width:600px){
+ .sw-classroom-work{gap:16px}
+ .sw-classroom-form{gap:16px;padding:20px 16px}
+ .sw-classroom-actions{gap:8px}
+ .sw-classroom-actions>.btn.primary{width:100%}
+ .sw-classroom-actions>.btn.quiet{padding-inline:8px}
+}

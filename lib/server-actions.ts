@@ -197,8 +197,8 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
     const optional=assignment?undefined:{id:`optional:${studentId}:${activity.id}`,studentId,activityId:activity.id,category:"Opcionales"};if(!assignment)assignment=optional!;
     const answer=text(data.answer,30000);
     const steps=procedure(data.procedure);
-    if(["choice","numeric","fraction","text"].includes(activity.type)?!answer.trim():!answer.trim()&&!data.fileIds?.length&&!procedureFilled(steps))throw new HttpError(400,"Escribe una respuesta, explica el procedimiento o adjunta tu trabajo.");
-    const assessment=selfAssessment(data.selfAssessment,true),hints=hintsUsed(data.hintsUsed,activity.hints?.length || 0);
+    if(["choice","numeric","fraction","text"].includes(activity.type)?!answer.trim():!answer.trim()&&!data.fileIds?.length&&!procedureFilled(steps))throw new HttpError(400,"Escribe una respuesta antes de guardarla.");
+    const assessment=selfAssessment(data.selfAssessment),hints=hintsUsed(data.hintsUsed,activity.hints?.length || 0);
     await ensureFileAccess(profile,data.fileIds,studentId);
     const item=await saveSubmission({id:identity.id,submissionId:identity.submissionId,studentId,assignmentId:assignment.id,activityId:activity.id,...(resourceId?{resourceId}:{}),answer,hintsUsed:hints,selfAssessment:assessment,procedure:steps,comment:text(data.comment,5000),autoResult:grade(activity,answer),reviewStatus:"pending",fileIds:data.fileIds || [],createdAt:new Date().toISOString()},draftId(studentId,"activity",activity.id),optional,data.draftRevision,{profile,action,related:{activity,assignment,...(resourceId?{resource:await required("resources",resourceId)}:{})}});
     return {id:item.id,autoResult:item.autoResult,reviewStatus:item.reviewStatus};

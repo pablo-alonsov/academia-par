@@ -17,6 +17,16 @@ test('activity solutions and internal file keys never reach the pupil',()=>{
   const file=studentDTO('files',{id:'f',name:'work.png',key:'private/storage/key',shared:true,url:'/api/files/f'});
   assert.ok(!Object.hasOwn(file,'key'));
 });
+
+test('activity correction capability exposes only a boolean without private solutions',()=>{
+  for(const autoCheck of [true,false]) {
+    const activity=studentDTO('activities',{id:'text-activity',type:'text',autoCheck,answer:'private solution',expectedAnswer:'private solution',teacherNotes:'private note',solution:'private explanation'});
+    assert.deepEqual(activity,{id:'text-activity',type:'text',autoCheck});
+  }
+  for(const autoCheck of [undefined,null,'true',{answer:'private nested content'}]) {
+    assert.deepEqual(studentDTO('activities',{id:'text-activity',autoCheck}),{id:'text-activity'});
+  }
+});
 test('private skill observation is separate from shareable evidence',()=>{
   const skill=studentDTO('skills',{id:'x',state:'Lo hago con ayuda',evidence:'example chosen to share',lastCheck:'2026-11-10',observation:'private interpretation'});
   assert.ok(!Object.hasOwn(skill,'observation'));
