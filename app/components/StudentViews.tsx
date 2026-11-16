@@ -20,7 +20,7 @@ import "./student.css";
 import "./student-simple.css";
 
 type Item = Record<string, any>;
-type Props = { data: Item; profile: string; tab: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void; onNavigate?: (tab: string) => void | Promise<void>; personalizationRequested?: boolean; onPersonalizationOpened?: () => void };
+type Props = { data: Item; profile: string; tab: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void; onNavigate?: (tab: string) => void | Promise<void>; onRefresh?: () => Promise<void>; personalizationRequested?: boolean; onPersonalizationOpened?: () => void };
 const STATES = ["Por empezar", "Lo estamos trabajando", "Lo hago con ayuda", "Lo hago sola", "Lo he recordado días después"];
 const plain = (value: any) => Array.isArray(value) ? value.join(" · ") : typeof value === "string" ? value : "";
 const searchText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim();
@@ -44,7 +44,7 @@ function AssignedActivityCard({ work, sequence, retry = false, onOpen }: { work:
   return <button type="button" className="card sv-activity-card sv-assigned-card ss-activity-card" data-assignment-id={assignment.id} onClick={onOpen}><div className="sv-card-top"><Subject value={activity.subject}/>{retry && <span className="badge amber">Reintentar</span>}</div><div className="sv-activity-body ss-activity-body">{sequence && <span className="sv-assignment-context">Ejercicio {sequence}</span>}<h3><MathText subject={activity.subject}>{assignment.title || activity.title}</MathText></h3></div>{dueDate && <p className="sv-assignment-due">Fecha: <time dateTime={dueDate}>{studentDate(dueDate)}</time></p>}<span className="sv-assignment-open">Abrir<ArrowRight size={18} aria-hidden="true"/></span></button>;
 }
 
-export default function StudentViews({ data, profile, tab, act, notify, onNavigate, personalizationRequested, onPersonalizationOpened }: Props) {
+export default function StudentViews({ data, profile, tab, act, notify, onNavigate, onRefresh, personalizationRequested, onPersonalizationOpened }: Props) {
   const navigation = usePlatformNavigation(), detail = navigation.route.detail;
   const student = (data.students || []).find((item: Item) => item.id === profile) || { id: profile, name: profile === "rocio" ? "Rocío" : "Alejandra", priorities: [] };
   const activities: Item[] = (data.activities || []).filter((item: Item) => item.studentId ? item.studentId === profile : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(profile));
@@ -130,7 +130,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const returnedResource = returnResource && !matchingResources.some(item => item.id === returnResource) ? resources.find(item => item.id === returnResource) : undefined;
   const resourceGroups = groupResourcesBySource([...(returnedResource ? [returnedResource] : []), ...matchingResources], data.files || []);
   const clearResourceFilters = () => { setResourceSubject(""); setResourceSearch(""); setResourceType(""); setResourceMode("Todos"); setReturnResource(""); setResourceLimit(5); setMaterialLimit(5); };
-  const switchPracticeSection = (section: "exercises" | "resources") => { setPracticeSection(section); setReturnResource(""); };
+  const switchPracticeSection = (section: "exercises" | "resources") => { setPracticeSection(section); setReturnResource(""); if(section === "resources") void onRefresh?.().catch(()=>notify("No se han podido actualizar los materiales.")); };
   const clearFilters = () => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); };
   const selectedActivity = activities.find(item => item.id === activityId), selectedResource = resources.find(item => item.id === resourceId), selectedSession = sessions.find(item => item.id === sessionId);
   const homeDraftOptions: HomeWork[] = drafts.flatMap<HomeWork>(draft => {

@@ -51,6 +51,8 @@ const {hashPin,digest}=await import('../lib/server-auth.ts');
 const {seed}=await import('../lib/server-data.ts');
 const {initialData}=await import('../lib/seed.ts');
 const {legacySeedBaseline}=await import('../lib/seed-baseline.ts');
+const {createPdfSharePlan,shareTeacherPdf}=await import('../lib/share-teacher-pdf.ts');
+const {groupResourcesBySource,pdfFileForResource}=await import('../lib/resource-files.ts');
 const pin='local-regression-password';
 const pinHash=await hashPin(pin);
 const origin='https://academy.example';
@@ -696,4 +698,78 @@ test('native PDF viewing is explicit and keeps identical authorization, privacy 
  await mutate(teacher.cookie,'manageFile',{id:file.id,shared:false});assert.equal((await get(rocio.cookie,'?view=inline')).status,403);assert.equal((await get(teacher.cookie,'?view=inline')).status,200);await mutate(teacher.cookie,'manageFile',{id:file.id,shared:true,detached:true});assert.equal((await get(rocio.cookie,'?view=inline')).status,403);assert.equal((await get(teacher.cookie,'?view=inline')).status,200);
  const textFile=await (await upload(rocio.cookie,{bytes:Buffer.from('Notas UTF-8'),name:'notas.txt',type:'text/plain'})).json();assert.match((await fileRoute.GET(request(textFile.url+'?view=inline',{cookie:rocio.cookie}),{params:Promise.resolve({id:textFile.id})})).headers.get('Content-Disposition'),/^attachment;/);
  const snapshot=await (await data.GET(request('/api/data',{cookie:rocio.cookie}))).json();assert.equal(snapshot.responses.length,0);assert.equal(snapshot.assignments.length,0);assert.equal(snapshot.observations.length,0);assert.equal(snapshot.sessions.length,0);
+});
+
+function pdfSharingDomain(){
+ const tables=['students','subjects','skills','sessions','resources','activities','assignments','responses','evidence','observations','doubts','exams','files','drafts','word_entries'];
+ return Object.fromEntries(tables.map(table=>[table,sqlite.prepare(`SELECT id,student_id,data,updated_at FROM ${table} ORDER BY id`).all()]));
+}
+function assertPdfSharingChanges(before,plan){
+ const after=pdfSharingDomain();
+ for(const table of Object.keys(before)){
+  if(!['files','resources'].includes(table)){assert.deepEqual(after[table],before[table],`${table} must not change`);continue;}
+  const added=new Set(plan.targets.map(target=>table==='files'?target.file.id:target.resourceId));
+  assert.equal(after[table].length,before[table].length+added.size);
+  assert.deepEqual(after[table].filter(row=>!added.has(row.id)),before[table],`existing ${table} must remain intact`);
+  for(const row of after[table].filter(row=>added.has(row.id))){const item=JSON.parse(row.data);assert.equal(table==='files'?item.type==='application/pdf'&&item.shared===true:item.type==='PDF',true);}
+ }
+}
+function pdfSharingDependencies(teacherCookie){
+ return {
+  uploadFile:async(target,file)=>{
+   const form=new FormData();form.set('file',file);form.set('studentId',target.studentId);form.set('shared','true');form.set('uploadId',target.uploadId);
+   const response=await uploadRoute.POST(new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin,Cookie:teacherCookie,'X-ARP-Profile':'teacher'},body:form}));
+   const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.shared,true);return body;
+  },
+  saveResource:payload=>mutate(teacherCookie,'upsertResource',payload),
+ };
+}
+
+for(const studentIds of [['rocio'],['alejandra'],['rocio','alejandra']])test(`PDFsharing real routes publish protected materials for ${studentIds.join(' and ')} only`,async()=>{
+ const teacher=await login('teacher',pin),pupils={rocio:(await login('rocio')).cookie,alejandra:(await login('alejandra')).cookie},bucket=memoryBucket(),before=pdfSharingDomain();
+ const plan=await createPdfSharePlan({file:new File([pdf],'Ficha compartida.pdf',{type:'application/octet-stream'}),title:'Ficha compartida desde el panel',subject:'Matemáticas',studentIds});
+ await shareTeacherPdf(plan,pdfSharingDependencies(teacher.cookie));assert.ok(plan.targets.every(target=>target.shared));assert.equal(bucket.puts,studentIds.length);assert.equal(bucket.objects.size,studentIds.length);
+ const resourceIds=new Set(plan.targets.map(target=>target.resourceId)),fileIds=new Set(plan.targets.map(target=>target.file.id));
+ for(const profile of ['rocio','alejandra']){
+  const snapshot=await (await data.GET(request('/api/data',{cookie:pupils[profile]}))).json(),own=plan.targets.filter(target=>target.studentId===profile);
+  assert.deepEqual(snapshot.resources.filter(resource=>resourceIds.has(resource.id)).map(resource=>resource.id).sort(),own.map(target=>target.resourceId).sort());
+  assert.deepEqual(snapshot.files.filter(file=>fileIds.has(file.id)).map(file=>file.id).sort(),own.map(target=>target.file.id).sort());
+  const groups=groupResourcesBySource(snapshot.resources,snapshot.files);
+  for(const target of own){
+   const resource=snapshot.resources.find(item=>item.id===target.resourceId),file=pdfFileForResource(resource,snapshot.files);
+   assert.equal(resource.studentId,profile);assert.equal(resource.fileId,target.file.id);assert.equal(resource.url,undefined);assert.equal(resource.duration,undefined);assert.equal(file.type,'application/pdf');assert.equal(file.shared,true);
+   assert.ok(groups.materials.some(item=>item.id===resource.id));assert.ok(!groups.external.some(item=>item.id===resource.id));
+  }
+ }
+ for(const target of plan.targets){
+  const context={params:Promise.resolve({id:target.file.id})},url=`/api/files/${target.file.id}?view=inline`,other=target.studentId==='rocio'?'alejandra':'rocio';
+  const own=await fileRoute.GET(request(url,{cookie:pupils[target.studentId]}),context);assert.equal(own.status,200);assert.equal(own.headers.get('Content-Type'),'application/pdf');assert.deepEqual(Buffer.from(await own.arrayBuffer()),pdf);
+  assert.equal((await fileRoute.GET(request(url,{cookie:pupils[other]}),context)).status,403);assert.equal((await fileRoute.GET(request(url),context)).status,401);assert.equal((await fileRoute.GET(request(url,{cookie:teacher.cookie}),context)).status,200);
+ }
+ const target=plan.targets[0];await mutate(pupils[target.studentId],'upsertResource',{id:'pupil-resource-disallowed',studentId:target.studentId,title:'No autorizado',fileId:target.file.id,type:'PDF'},403);
+ assertPdfSharingChanges(before,plan);
+});
+
+for(const lost of ['upload','resource'])test(`PDFsharing retry after lost ${lost} acknowledgement uses the same real files and resources`,async()=>{
+ const teacher=await login('teacher',pin),bucket=memoryBucket(),before=pdfSharingDomain();
+ const plan=await createPdfSharePlan({file:new File([pdf],'Ficha reintentada.pdf',{type:'application/pdf'}),title:'Ficha con reintento seguro',subject:'Lengua',studentIds:['rocio','alejandra']});
+ const real=pdfSharingDependencies(teacher.cookie),uploaded=[],saved=[];let fail=true;
+ const dependencies={
+  uploadFile:async(target,file)=>{const result=await real.uploadFile(target,file);uploaded.push({studentId:target.studentId,uploadId:target.uploadId,result});if(lost==='upload'&&fail){fail=false;throw Error('Lost upload acknowledgement after commit');}return result;},
+  saveResource:async payload=>{const result=await real.saveResource(payload);saved.push(structuredClone(payload));if(lost==='resource'&&fail){fail=false;throw Error('Lost resource acknowledgement after commit');}return result;},
+ };
+ const identities=plan.targets.map(target=>[target.studentId,target.uploadId,target.resourceId]);
+ await assert.rejects(()=>shareTeacherPdf(plan,dependencies),/acknowledgement after commit/);
+ assert.deepEqual(plan.targets.map(target=>[target.studentId,target.uploadId,target.resourceId]),identities);assert.deepEqual(plan.targets.map(target=>target.shared),[false,false]);assert.equal(bucket.puts,1);assert.equal(bucket.objects.size,1);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM files').get().n,1);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM resources').get().n,before.resources.length+(lost==='resource'?1:0));
+ assert.equal(Boolean(plan.targets[0].file),lost==='resource');
+ await shareTeacherPdf(plan,dependencies);assert.ok(plan.targets.every(target=>target.shared));assert.equal(bucket.puts,2,'only the still-pending pupil needs a new object');assert.equal(bucket.objects.size,2);
+ if(lost==='upload'){
+  const rocio=uploaded.filter(call=>call.studentId==='rocio');assert.equal(rocio.length,2);assert.equal(rocio[0].uploadId,rocio[1].uploadId);assert.equal(rocio[0].result.id,rocio[1].result.id);assert.equal(rocio[1].result.alreadyUploaded,true);
+ }else{
+  assert.equal(uploaded.filter(call=>call.studentId==='rocio').length,1);const rocio=saved.filter(payload=>payload.studentId==='rocio');assert.equal(rocio.length,2);assert.deepEqual(rocio[0],rocio[1]);
+ }
+ await shareTeacherPdf(plan,{uploadFile:async()=>{throw Error('Completed upload must be skipped');},saveResource:async()=>{throw Error('Completed resource must be skipped');}});assert.equal(bucket.puts,2);
+ assertPdfSharingChanges(before,plan);
 });

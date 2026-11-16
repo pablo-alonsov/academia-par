@@ -1,0 +1,31 @@
+.teacher-pdf-upload{max-width:580px}
+.tpu-form{display:flex;flex-direction:column;gap:20px;min-width:0}
+.tpu-intro{margin:0;color:var(--muted);line-height:1.6}
+.tpu-fields{border:0;margin:0;padding:0;min-inline-size:0;display:flex;flex-direction:column;gap:18px}
+.tpu-fields .field{margin:0;min-width:0}
+.tpu-fields :is(input,select){min-width:0;min-height:46px;max-width:100%;font-size:max(var(--arp-font-min,0px),calc(15px * var(--arp-font-scale,1)))}
+.tpu-fields input[type=file]{padding:10px;overflow:hidden}
+.tpu-fields input[type=file]::file-selector-button{min-height:44px;max-width:100%;padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface2);color:var(--text);font:inherit;cursor:pointer;margin-inline-end:10px}
+.tpu-fields:disabled :is(input,select){cursor:default}
+.tpu-selects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.tpu-selected-file{display:flex;align-items:flex-start;gap:9px;color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));margin-top:-8px}
+.tpu-selected-file svg{margin-top:2px}
+.tpu-selected-file span{min-width:0;overflow-wrap:anywhere}
+.tpu-progress{padding:14px 16px;background:var(--surface2);border:1px solid var(--line);border-radius:11px}
+.tpu-progress ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px}
+.tpu-progress li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:9px;font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)))}
+.tpu-progress li strong{font-weight:600;font-size:inherit;text-align:end;overflow-wrap:anywhere}
+.tpu-shared-icon{color:#166447}
+.tpu-error{display:flex;align-items:flex-start;gap:10px;border:1px solid #e3a8ac;background:#fff1f2;color:#9f1239;padding:14px 16px;border-radius:11px;overflow-wrap:anywhere}
+.tpu-error svg{margin-top:2px}
+.tpu-error p{margin:0;font-size:max(var(--arp-font-min,0px),calc(14px * var(--arp-font-scale,1)));line-height:1.6}
+.tpu-error p+p{margin-top:7px}
+.tpu-error:focus{outline:3px solid var(--primary);outline-offset:3px}
+.tpu-preparing{display:flex;align-items:center;gap:9px;margin:0;color:var(--muted)}
+.tpu-actions{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--line);padding-top:18px}
+.tpu-actions .btn{min-height:46px}
+.teacher-pdf-upload.is-busy .arp-dialog-header>.icon-btn{opacity:.45;cursor:wait}
+:root[data-theme=dark] .tpu-error{background:#401e2b;border-color:#855160;color:#fecdd3}
+:root[data-theme=dark] .tpu-shared-icon{color:#8ae4bf}
+@media(prefers-reduced-motion:no-preference){.tpu-spinner{animation:tpu-spin 1.25s linear infinite}@keyframes tpu-spin{to{transform:rotate(360deg)}}}
+@media(max-width:600px){.tpu-selects{grid-template-columns:minmax(0,1fr)}.tpu-fields :is(input,select){font-size:max(var(--arp-font-min,0px),calc(16px * var(--arp-font-scale,1)))}.tpu-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}.tpu-actions .btn{padding-inline:10px}.tpu-progress li{grid-template-columns:18px minmax(0,1fr)}.tpu-progress li strong{grid-column:2;text-align:start}.tpu-error,.tpu-progress{padding:13px}.tpu-form{gap:18px}}
