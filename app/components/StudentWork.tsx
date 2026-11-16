@@ -8,6 +8,7 @@ import { isUnread, markRead } from "./StudentReadState";
 import MathAnswerField from "./MathAnswerField";
 import { responsesForActivity, responsesForResource } from "@/lib/resource-work";
 import { responseContextLabel } from "@/lib/response-context";
+import { pdfFileForResource } from "@/lib/resource-files";
 import MathText from "./MathText";
 import ExerciseFeedbackToast, {type ExerciseFeedback} from './ExerciseFeedbackToast';
 import {createExerciseReturn} from '@/lib/exercise-return';
@@ -74,7 +75,31 @@ function ClosedAnswer({ type, value, onChange, subject }: {type:string;value:str
   return <MathAnswerField label="Tu respuesta" subject={subject} value={value} onChange={onChange} maxLength={1000} inputMode={mathematical ? "decimal" : "text"} allowExpressions={!mathematical}/>;
 }
 
-export function StudentActivityDetail({ activity, assignment, student, data, act, notify, onBack, backLabel="Volver a practicar" }: any) {
+function hasPdfMaterial(resource: Item | undefined, files: Item[] = []) {
+  return Boolean(pdfFileForResource(resource, files) || (Array.isArray(resource?.fileIds) && resource.fileIds.some((fileId: unknown) => typeof fileId === "string" && pdfFileForResource({ fileId }, files))));
+}
+
+function PdfWorksheetContent({resource,files,instructions}:any) {
+  return <section className="sv-stack" aria-label="Ficha PDF">{instructions && <p className="sv-preline sv-instructions"><MathText subject={resource.subject}>{instructions}</MathText></p>}<MaterialFiles resource={resource} files={files}/></section>;
+}
+
+function StudentPdfActivity({activity,resource,data,onBack,backLabel="Volver a practicar"}:any) {
+  const heading=useRef<HTMLHeadingElement>(null);
+  useEffect(()=>{heading.current?.focus({preventScroll:true})},[activity.id]);
+  return <div className="student-views sv-stack sw-simple-work sw-classroom-work">
+    <button className="btn quiet sv-back" onClick={onBack}><ArrowLeft size={17}/>{backLabel}</button>
+    <div className="sv-detail-heading"><span className="sv-subject"><BookOpen size={14}/>{activity.subject}</span><h1 ref={heading} tabIndex={-1}><MathText subject={activity.subject}>{activity.title}</MathText></h1></div>
+    <div className="card sv-pad"><PdfWorksheetContent resource={resource} files={data.files || []} instructions={activity.instructions || resource.instructions || resource.description}/></div>
+    {activity.explanation && <details className="sw-simple-details"><summary>Explicación</summary><p className="sv-preline"><MathText subject={activity.subject}>{activity.explanation}</MathText></p></details>}
+  </div>;
+}
+
+export function StudentActivityDetail(props:any) {
+  const resource=(props.data.resources || []).find((item:Item)=>item.id===props.activity.resourceId);
+  return ["paper","external"].includes(props.activity.type) && hasPdfMaterial(resource,props.data.files || []) ? <StudentPdfActivity {...props} resource={resource}/> : <StudentInteractiveActivityDetail {...props}/>;
+}
+
+function StudentInteractiveActivityDetail({ activity, assignment, student, data, act, notify, onBack, backLabel="Volver a practicar" }: any) {
   const resource = (data.resources || []).find((item:Item)=>item.id===activity.resourceId);
   const draft = useStudentDraft({studentId:student.id,activityId:activity.id},data.drafts || [],act,resource ? [{studentId:student.id,resourceId:resource.id,label:"Respuesta anterior del recurso"},...(data.activities || []).filter((item:Item)=>item.resourceId===resource.id && item.id!==activity.id).map((item:Item)=>({studentId:student.id,activityId:item.id,label:`Respuesta de «${item.title}»`}))] : []);
   const {value} = draft;
@@ -147,7 +172,12 @@ export function StudentActivityDetail({ activity, assignment, student, data, act
   </div>;
 }
 
-export function StudentResourceDialog({resource,student,data,act,notify,onClose}:any) {
+export function StudentResourceDialog(props:any) {
+  const {resource,data,onClose}=props;
+  return hasPdfMaterial(resource,data.files || []) ? <Dialog title={<MathText subject={resource.subject}>{resource.title}</MathText>} className="sw-resource-dialog student-views sw-simple-resource sw-classroom-work" onClose={onClose} wide><div className="sv-stack"><PdfWorksheetContent resource={resource} files={data.files || []} instructions={resource.instructions || resource.description}/><div className="sw-classroom-actions"><button className="btn secondary" onClick={onClose}>Cerrar</button></div></div></Dialog> : <StudentResourceWorkDialog {...props}/>;
+}
+
+function StudentResourceWorkDialog({resource,student,data,act,notify,onClose}:any) {
   const draft=useStudentDraft({studentId:student.id,resourceId:resource.id},data.drafts || [],act),{value}=draft;
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   const history=responsesForResource(resource.id,student.id,data.responses || [],data.activities || []);

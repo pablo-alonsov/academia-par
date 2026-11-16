@@ -15,7 +15,7 @@ export function MaterialFiles({ resource, files = [] }: { resource: Item; files?
     return <section key={id} className="material-pdf" aria-label={`Ficha PDF: ${file.name || resource.title}`}>
       <div className="material-pdf-heading"><FileText size={23} aria-hidden="true"/><div><strong>{isExamPreparation(resource)?"Ficha tipo examen en PDF":"Ficha completa en PDF"}</strong><p>{file.name || resource.title}{file.size > 0 ? ` · ${Math.ceil(file.size / 1024)} KB` : ""}</p>{isExamPreparation(resource)&&<span className="badge blue">{examModeLabel(resource.examMode)}</span>}</div></div>
       <div className="material-pdf-actions"><a className="btn primary" href={`${url}?view=inline#view=FitH`} target="_blank" rel="noopener noreferrer">Abrir ficha PDF<ExternalLink size={16}/></a><a className="btn secondary" href={url} download={file.name || true}><Download size={16}/>Descargar PDF</a></div>
-      <p className="material-pdf-help">La ficha se abre en otra pestaña. Puedes consultarla mientras preparas tu respuesta aquí o trabajar en papel.</p>
+      <p className="material-pdf-help">La ficha se abre en otra pestaña. Puedes consultarla cuando quieras o descargarla para trabajar en papel.</p>
     </section>;
   })}</div>;
 }
