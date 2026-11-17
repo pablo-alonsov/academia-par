@@ -5,8 +5,8 @@ const COMMON=["id","studentId","updatedAt"];
 const STUDENT_FIELDS:Partial<Record<TableName,string[]>>={
   students:["name","level","color","avatar","avatarFileId","priorities","nextStep","mainActivityId","alternativeActivityId","pinnedResourceIds","favoriteResourceIds","curriculumFocus","subjectPlan","secondTermSubjects","resultVersion"],
   skills:["subject","title","state","reviewNeeded","lastCheck","evidence","nextStep","reviewDate","explanation","phase"],
-  sessions:["date","subject","subjects","objective","duration","status","content","sharedSummary","explanation","materials","originalText","revisedText","nextStep","activityId","alternativeActivityId","closedAt","fileIds"],
-  resources:["title","url","fileId","subject","skillId","type","duration","objective","instructions","level","description","accessNote","accessStatus","checkedAt","suggestedStudentIds","phase","availableFromTerm","supportMode","collection","examMode"],
+  sessions:["date","subject","subjects","objective","duration","status","content","sharedSummary","explanation","materials","originalText","revisedText","nextStep","activityId","alternativeActivityId","closedAt","fileIds","resourceIds","activityIds"],
+  resources:["title","url","fileId","fileIds","subject","skillId","type","duration","objective","instructions","level","description","accessNote","accessStatus","checkedAt","suggestedStudentIds","phase","availableFromTerm","supportMode","collection","examMode"],
   activities:["title","objective","subject","skillId","level","duration","instructions","materials","checkMethod","check","type","autoCheck","options","hints","suggestedStudentIds","resourceId","url","phase","availableFromTerm","supportMode"],
   assignments:["activityId","sessionId","category","dueDate","title"],
   responses:["assignmentId","activityId","resourceId","answer","hintsUsed","selfAssessment","comment","procedure","submissionId","autoResult","reviewStatus","feedback","result","fileIds","createdAt","reviewedAt","kind"],

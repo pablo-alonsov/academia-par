@@ -108,6 +108,16 @@ function referencesSolution(item:RecordData,files:Map<string,RecordData>,referen
   const activity=references.activities.get(item.activityId);
   return Boolean(activity&&(direct(activity)||(references.resources.has(activity.resourceId)&&direct(references.resources.get(activity.resourceId)!))));
 }
+function classResourceVisible(id:unknown,profile:Profile,files:Map<string,RecordData>,references:FileReferences):boolean{
+  if(typeof id!=="string")return false;
+  const resource=references.resources.get(id);
+  return Boolean(resource&&allowedContent(resource,profile)&&resource.shared!==false&&resource.detached!==true&&linkedFileIds(resource).every(fileId=>fileVisible(files.get(fileId),profile)));
+}
+function classActivityVisible(id:unknown,profile:Profile,files:Map<string,RecordData>,references:FileReferences):boolean{
+  if(typeof id!=="string")return false;
+  const activity=references.activities.get(id);
+  return Boolean(activity&&allowedContent(activity,profile)&&activity.shared!==false&&activity.detached!==true&&linkedFileIds(activity).every(fileId=>fileVisible(files.get(fileId),profile))&&(!activity.resourceId||classResourceVisible(activity.resourceId,profile,files,references)));
+}
 export function projectRecord(profile:Profile,table:TableName,item:RecordData,files:Map<string,RecordData>=new Map(),students:Map<string,RecordData>=new Map(),references:FileReferences={resources:new Map(),activities:new Map()}):RecordData|null{
   if(table==="files"&&item.purpose==="avatar")return null;
   const linked=[...(item.fileId?[item.fileId]:[]),...(Array.isArray(item.fileIds)?item.fileIds:[])];
@@ -128,7 +138,11 @@ export function projectRecord(profile:Profile,table:TableName,item:RecordData,fi
     for(const key of ["favoriteResourceIds","pinnedResourceIds"])if(Array.isArray(projected[key]))projected[key]=projected[key].filter((id:string)=>{const resource=references.resources.get(id);return !resource||!referencesSolution(resource,files,references);});
     for(const key of ["mainActivityId","alternativeActivityId"]){const activity=references.activities.get(projected[key]);if(activity&&referencesSolution(activity,files,references))delete projected[key];}
   }
-  if(table==="sessions")for(const key of ["activityId","alternativeActivityId"]){const activity=references.activities.get(projected[key]);if(activity&&referencesSolution(activity,files,references))delete projected[key];}
+  if(table==="sessions"){
+    for(const key of ["activityId","alternativeActivityId"])if(projected[key]!==undefined&&!classActivityVisible(projected[key],profile,files,references))delete projected[key];
+    if(projected.resourceIds!==undefined)projected.resourceIds=Array.isArray(projected.resourceIds)?projected.resourceIds.filter((id:unknown)=>classResourceVisible(id,profile,files,references)):[];
+    if(projected.activityIds!==undefined)projected.activityIds=Array.isArray(projected.activityIds)?projected.activityIds.filter((id:unknown)=>classActivityVisible(id,profile,files,references)):[];
+  }
   if(table==="students"){const url=avatarUrl(item,files.get(item.avatarFileId));if(url)projected.avatarUrl=url;}
   if(Array.isArray(projected.fileIds))projected.fileIds=projected.fileIds.filter((id:string)=>fileVisible(files.get(id),profile));
   if(table==="resources")projected.pinned=Boolean(students.get(profile)?.pinnedResourceIds?.includes(item.id));
@@ -139,6 +153,7 @@ export async function actionPatch(profile:Profile,changes:Changes){
   const records=await Promise.all([...changes].map(async([table,ids])=>({table,ids:[...ids],rows:await Promise.all([...ids].map(id=>get(table,id)))})));
   const references:FileReferences={resources:new Map(),activities:new Map()};
   const activityIds=new Set<string>(),resourceIds=new Set<string>();
+  for(const {rows}of records)for(const row of rows)if(row){if(Array.isArray(row.activityIds))for(const id of row.activityIds)if(typeof id==="string")activityIds.add(id);if(Array.isArray(row.resourceIds))for(const id of row.resourceIds)if(typeof id==="string")resourceIds.add(id);}
   for(const {table,rows}of records)for(const row of rows)if(row){if(table==="activities")references.activities.set(row.id,row);if(table==="resources")references.resources.set(row.id,row);if(row.activityId)activityIds.add(row.activityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);if(row.resourceId)resourceIds.add(row.resourceId);if(table==="students"){for(const id of [...row.favoriteResourceIds||[],...row.pinnedResourceIds||[]])resourceIds.add(id);if(row.mainActivityId)activityIds.add(row.mainActivityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);}}
   if(profile!=="teacher"){
     for(const item of await Promise.all([...activityIds].filter(id=>!references.activities.has(id)).map(id=>get("activities",id))))if(item)references.activities.set(item.id,item);

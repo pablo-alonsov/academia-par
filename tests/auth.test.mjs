@@ -1019,3 +1019,107 @@ test('PDFwork concurrent acknowledgements converge and a changed original file r
  try{await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true,storedPdfWorkFile(target.file.id)._pdfWorkRevision),409);}finally{D1Statement.prototype.run=original;}
  assert.equal(injected,true);assert.equal(storedPdfWorkFile(target.file.id)._pdfWorkedAt,null);assert.equal(storedPdfWorkFile(plan.targets[1].file.id)._pdfWorkedAt,undefined);
 });
+
+const simpleClassPayload=(overrides={})=>({id:'simple-class',studentId:'rocio',date:'2026-11-17',schoolwork:'PRIVATE SCHOOL NOTES',content:'Ortografía y una lectura.',resourceIds:[],activityIds:[],fileIds:[],baseUpdatedAt:null,publish:false,...overrides});
+const storedClass=id=>{const row=sqlite.prepare('SELECT data,updated_at FROM sessions WHERE id=?').get(id);return row?{...JSON.parse(row.data),updatedAt:row.updated_at}:null;};
+async function simpleClassSetup(){
+ const teacher=await login('teacher',pin),pupils={rocio:(await login('rocio')).cookie,alejandra:(await login('alejandra')).cookie};
+ for(const file of [
+  {id:'class-own-file',studentId:'rocio',type:'application/pdf',shared:true},
+  {id:'class-own-image',studentId:'rocio',type:'image/jpeg',shared:true},
+  {id:'class-foreign-file',studentId:'alejandra',type:'application/pdf',shared:true},
+  {id:'class-private-file',studentId:'rocio',type:'application/pdf',shared:false},
+  {id:'class-detached-file',studentId:'rocio',type:'application/pdf',shared:true,detached:true},
+  {id:'class-solution-file',studentId:'rocio',type:'application/pdf',shared:true,purpose:'solution'},
+  {id:'class-avatar-file',studentId:'rocio',type:'image/png',shared:true,purpose:'avatar'},
+ ])insertRecord('files',file);
+ for(const resource of [
+  {id:'class-own-resource',studentId:'rocio',title:'Ficha propia',fileId:'class-own-file'},
+  {id:'class-multi-resource',studentId:'rocio',title:'Ficha y esquema',fileIds:['class-own-file','class-own-image']},
+  {id:'class-hidden-multi-resource',studentId:'rocio',title:'Material privado mezclado',fileIds:['class-own-file','class-private-file']},
+  {id:'class-foreign-resource',studentId:'alejandra',title:'Ficha ajena',fileId:'class-foreign-file'},
+  {id:'class-private-resource',studentId:'rocio',title:'Ficha privada',fileId:'class-private-file'},
+  {id:'class-solution-resource',studentId:'rocio',title:'Solución privada',url:origin+'/api/files/class-solution-file?view=inline'},
+ ])insertRecord('resources',resource);
+ for(const activity of [
+  {id:'class-own-activity',studentId:'rocio',title:'Actividad propia',type:'paper',resourceId:'class-own-resource'},
+  {id:'class-foreign-activity',studentId:'alejandra',title:'Actividad ajena',type:'numeric'},
+  {id:'class-private-activity',studentId:'rocio',title:'Actividad privada',type:'external',resourceId:'class-private-resource'},
+  {id:'class-solution-activity',studentId:'rocio',title:'Solución privada',type:'paper',resourceId:'class-solution-resource'},
+ ])insertRecord('activities',activity);
+ return {teacher,pupils};
+}
+
+test('simple classes save private preparation then publish and edit a fixed 60-minute diary without learning side effects',async()=>{
+ const {teacher,pupils}=await simpleClassSetup(),before=pdfSharingDomain();
+ const payload=simpleClassPayload({resourceIds:['class-own-resource','class-multi-resource'],activityIds:['class-own-activity'],fileIds:['class-own-file'],duration:9,nextStep:'FORGED NEXT STEP',skillUpdate:{id:'forged'}});
+ const draft=await mutate(teacher.cookie,'saveClassRecord',payload),prepared=storedClass(payload.id);
+ assert.equal(prepared.status,'por preparar');assert.equal(prepared.duration,60);assert.equal(prepared.schoolwork,payload.schoolwork);assert.ok(draft.patch.sessions.some(row=>row.id===payload.id));
+ for(const cookie of Object.values(pupils))assert.equal((await (await data.GET(request('/api/data',{cookie}))).json()).sessions.length,0);
+ const shared=await mutate(teacher.cookie,'saveClassRecord',{...payload,baseUpdatedAt:prepared.updatedAt,publish:true}),published=storedClass(payload.id);
+ assert.equal(published.status,'realizada');assert.equal(published.duration,60);assert.equal(published.sharedSummary,payload.content);assert.ok(published.closedAt);assert.ok(published.updatedAt>prepared.updatedAt);
+ const ownSnapshot=await (await data.GET(request('/api/data',{cookie:pupils.rocio}))).json(),own=ownSnapshot.sessions[0];
+ assert.deepEqual(ownSnapshot.resources.find(row=>row.id==='class-multi-resource').fileIds,['class-own-file','class-own-image']);assert.equal(ownSnapshot.resources.some(row=>row.id==='class-hidden-multi-resource'),false);
+ assert.equal(own.content,payload.content);assert.deepEqual(own.resourceIds,payload.resourceIds);assert.deepEqual(own.activityIds,payload.activityIds);assert.deepEqual(own.fileIds,payload.fileIds);assert.ok(!JSON.stringify(own).includes('PRIVATE SCHOOL NOTES'));assert.ok(!Object.hasOwn(own,'_simpleClassRecord'));
+ assert.equal((await (await data.GET(request('/api/data',{cookie:pupils.alejandra}))).json()).sessions.length,0);
+ await mutate(teacher.cookie,'saveClassRecord',{...payload,baseUpdatedAt:published.updatedAt,publish:false,content:'Resumen revisado.'});const edited=storedClass(payload.id);
+ assert.equal(edited.status,'realizada');assert.equal(edited.content,'Resumen revisado.');assert.equal(edited.sharedSummary,'Resumen revisado.');assert.equal(edited.closedAt,published.closedAt);
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='sessions')assert.deepEqual(after[table],before[table],table+' must be unchanged');
+ assert.equal(shared.patch.students,undefined);assert.equal(after.sessions.length,1);
+});
+
+test('simple class permissions, dates and selection input are checked before any diary write',async()=>{
+ const {teacher,pupils}=await simpleClassSetup(),payload=simpleClassPayload();
+ await mutate(undefined,'saveClassRecord',payload,401);for(const cookie of Object.values(pupils))await mutate(cookie,'saveClassRecord',payload,403);
+ for(const invalid of [{id:''},{studentId:'other'},{date:'2026-02-30'},{date:'2026-11-15'},{publish:'true'},{publish:true,content:'  '},{baseUpdatedAt:undefined},{resourceIds:'class-own-resource'},{activityIds:[42]},{fileIds:Array(31).fill('class-own-file')}])await mutate(teacher.cookie,'saveClassRecord',{...payload,...invalid},400);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sessions').get().n,0);
+ const future=await mutate(teacher.cookie,'saveClassRecord',{...payload,id:'future-simple-class',date:'2027-01-01'});assert.equal(future.patch.sessions[0].status,'por preparar');
+ await mutate(teacher.cookie,'saveClassRecord',{...payload,id:'future-simple-class',studentId:'alejandra',baseUpdatedAt:future.patch.sessions[0].updatedAt},400);
+ assert.equal(storedClass('future-simple-class').studentId,'rocio');
+});
+
+test('simple class selections reject private files, hidden references and other pupils rather than trusting client IDs',async()=>{
+ const {teacher}=await simpleClassSetup(),payload=simpleClassPayload();
+ const invalid=[
+  ...['class-foreign-file','class-private-file','class-detached-file','class-solution-file','class-avatar-file'].map(id=>({fileIds:[id]})),
+  ...['class-foreign-resource','class-private-resource','class-solution-resource','class-hidden-multi-resource'].map(id=>({resourceIds:[id]})),
+  ...['class-foreign-activity','class-private-activity','class-solution-activity'].map(id=>({activityIds:[id]})),
+ ];
+ for(const selection of invalid)await mutate(teacher.cookie,'saveClassRecord',{...payload,...selection},400);
+ await mutate(teacher.cookie,'saveClassRecord',{...payload,resourceIds:['missing-resource']},404);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sessions').get().n,0);
+ const safe=await mutate(teacher.cookie,'saveClassRecord',{...payload,resourceIds:['class-own-resource','class-own-resource'],activityIds:['class-own-activity','class-own-activity'],fileIds:['class-own-file','class-own-file']});
+ assert.deepEqual(safe.patch.sessions[0].resourceIds,['class-own-resource']);assert.deepEqual(safe.patch.sessions[0].activityIds,['class-own-activity']);assert.deepEqual(safe.patch.sessions[0].fileIds,['class-own-file']);
+});
+
+test('simple class retries are idempotent and stale or simultaneous edits keep the winner and return its snapshot',async()=>{
+ const {teacher}=await simpleClassSetup(),payload=simpleClassPayload();
+ const created=await Promise.all([mutate(teacher.cookie,'saveClassRecord',payload),mutate(teacher.cookie,'saveClassRecord',payload)]),initial=storedClass(payload.id);
+ assert.ok(created.some(result=>result.alreadySaved));assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sessions').get().n,1);
+ const before=pdfSharingDomain(),retry=await mutate(teacher.cookie,'saveClassRecord',payload);assert.equal(retry.alreadySaved,true);assert.deepEqual(pdfSharingDomain(),before);
+ const base={...payload,baseUpdatedAt:initial.updatedAt},writes=await Promise.all([mutate(teacher.cookie,'saveClassRecord',{...base,content:'Primera versión'}),mutate(teacher.cookie,'saveClassRecord',{...base,content:'Segunda versión'})]);
+ assert.equal(writes.filter(result=>result.conflict).length,1);const current=storedClass(payload.id),conflict=writes.find(result=>result.conflict);
+ assert.equal(conflict.patch.sessions[0].content,current.content);assert.ok(current.updatedAt>initial.updatedAt);
+ const old=await mutate(teacher.cookie,'saveClassRecord',payload);assert.equal(old.conflict,true);assert.equal(storedClass(payload.id).content,current.content);
+});
+
+test('the first simple edit preserves the complete legacy class once and never shares old private notes or attachments',async()=>{
+ const {teacher,pupils}=await simpleClassSetup();
+ const legacy={id:'legacy-simple-class',studentId:'rocio',date:'2026-11-16',duration:45,status:'realizada',content:'Contenido antiguo',sharedSummary:'Resumen antiguo distinto',schoolwork:'PRIVATE ORIGINAL SCHOOL',privateNotes:'PRIVATE ORIGINAL NOTES',explanation:'Explicación conservada',nextStep:'Siguiente paso anterior',fileIds:['class-private-file'],unknownLegacy:{custom:'Conservar'}};
+ insertRecord('sessions',legacy);const old=storedClass(legacy.id);
+ await mutate(teacher.cookie,'saveClassRecord',simpleClassPayload({id:old.id,date:old.date,content:old.content,schoolwork:old.schoolwork,baseUpdatedAt:old.updatedAt,publish:false}));const saved=storedClass(old.id);
+ assert.equal(saved.duration,60);assert.equal(saved.status,'realizada');assert.equal(saved.sharedSummary,legacy.sharedSummary);assert.equal(saved.privateNotes,legacy.privateNotes);assert.equal(saved.explanation,legacy.explanation);assert.equal(saved.nextStep,legacy.nextStep);assert.deepEqual(saved.unknownLegacy,legacy.unknownLegacy);assert.deepEqual(saved._legacyClassRecord,old);assert.deepEqual(saved.fileIds,[]);
+ await mutate(teacher.cookie,'saveClassRecord',simpleClassPayload({id:old.id,date:old.date,content:'Contenido actualizado',schoolwork:old.schoolwork,baseUpdatedAt:saved.updatedAt,publish:false}));const updated=storedClass(old.id);
+ assert.deepEqual(updated._legacyClassRecord,old);assert.equal(updated.sharedSummary,'Contenido actualizado');
+ const own=(await (await data.GET(request('/api/data',{cookie:pupils.rocio}))).json()).sessions[0];assert.ok(!JSON.stringify(own).includes('PRIVATE ORIGINAL'));assert.ok(!JSON.stringify(own).includes('class-private-file'));assert.ok(!Object.hasOwn(own,'_legacyClassRecord'));
+});
+
+test('legacy class reference arrays are filtered by owner and live visibility in snapshots and patches without hiding the diary',async()=>{
+ const {pupils}=await simpleClassSetup();
+ const badIds=['class-private-resource','class-foreign-resource','class-solution-resource','class-hidden-multi-resource','missing-resource'],badActivities=['class-private-activity','class-foreign-activity','class-solution-activity','missing-activity'];
+ insertRecord('sessions',{id:'class-array-projection',studentId:'rocio',date:'2026-11-16',status:'realizada',content:'Diario visible',schoolwork:'PRIVATE SCHOOL',resourceIds:['class-own-resource',...badIds],activityIds:['class-own-activity',...badActivities],activityId:'class-foreign-activity',alternativeActivityId:'class-private-activity',fileIds:['class-own-file','class-private-file','class-solution-file'],_legacyClassRecord:{privateNotes:'PRIVATE ARCHIVE'}});
+ const check=session=>{assert.equal(session.content,'Diario visible');assert.deepEqual(session.resourceIds,['class-own-resource']);assert.deepEqual(session.activityIds,['class-own-activity']);assert.deepEqual(session.fileIds,['class-own-file']);assert.equal(session.activityId,undefined);assert.equal(session.alternativeActivityId,undefined);assert.ok(!JSON.stringify(session).includes('PRIVATE'));for(const id of [...badIds,...badActivities])assert.ok(!JSON.stringify(session).includes(id));};
+ const snapshot=await (await data.GET(request('/api/data',{cookie:pupils.rocio}))).json();check(snapshot.sessions[0]);
+ const collected=await collectAction(async()=>trackChange('sessions','class-array-projection'));check((await actionPatch('rocio',collected.changes)).patch.sessions[0]);
+ const teacherSnapshot=(await (await data.GET(request('/api/data',{cookie:(await login('teacher',pin)).cookie}))).json()).sessions[0];assert.ok(teacherSnapshot.resourceIds.includes('class-private-resource'));
+});

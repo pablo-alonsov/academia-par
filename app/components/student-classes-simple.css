@@ -1,0 +1,20 @@
+.student-views .sv-session-card.sc-session-card{grid-template-columns:minmax(0,1fr) 20px;gap:18px;align-items:center;min-height:88px;text-align:left}
+.student-views .sc-session-card h3{margin:0 0 8px;font-size:max(var(--arp-font-min,0px),calc(17px * var(--arp-font-scale,1)));line-height:1.5}
+.student-views .sc-session-card p{margin:0;color:var(--muted);font-size:max(var(--arp-font-min,0px),calc(14px * var(--arp-font-scale,1)));display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+.sc-class-detail{max-width:100%;min-width:0}
+.student-views .sc-class-detail h1{overflow-wrap:anywhere}
+.student-views :is(.sc-class-note,.sc-class-materials)>h2{font-size:max(var(--arp-font-min,0px),calc(21px * var(--arp-font-scale,1)));line-height:1.4;letter-spacing:-.35px;margin:0 0 16px}
+.student-views .sc-class-note>p:last-child{margin-bottom:0}
+.sc-class-links{display:flex;flex-direction:column;gap:10px;min-width:0}
+.sc-class-link{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);min-height:50px;min-width:0;width:100%;text-align:left;font-size:max(var(--arp-font-min,0px),calc(15px * var(--arp-font-scale,1)));line-height:1.6;text-decoration:none}
+.sc-class-link>svg{flex-shrink:0;color:var(--primary)}
+.sc-class-link>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.sc-class-link:hover{background:var(--surface2);border-color:var(--primary)}
+.sc-class-link:focus-visible,.sc-class-notes>summary:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.sc-class-notes>summary{display:flex;align-items:center;gap:9px;min-height:44px;cursor:pointer;color:var(--primary);font-size:max(var(--arp-font-min,0px),calc(15px * var(--arp-font-scale,1)));font-weight:600}
+.sc-class-notes>summary::before{content:"›";font-size:24px;line-height:1;display:inline-block;transition:transform .3s}
+.sc-class-notes[open]>summary::before{transform:rotate(90deg)}
+.sc-class-notes-content{display:flex;flex-direction:column;gap:16px;margin-top:16px;min-width:0}
+.student-views .sc-class-notes-content p{margin:0}
+@media(max-width:600px){.student-views .sv-session-card.sc-session-card{padding:18px;gap:12px}.sc-class-link{padding:12px;gap:10px;min-height:52px}.student-views .sc-class-notes{padding-block:12px}}
+@media(prefers-reduced-motion:reduce){.sc-class-notes>summary::before{transition:none}}

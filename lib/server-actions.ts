@@ -8,6 +8,7 @@ import { ACTIVITY_SUPPORT_OPTIONS } from "./activity-support";
 import { commitStudentNotification } from "./server-notifications";
 import { assertNoSolutionReferences, patchFilesStatement, restorePdfSolution, setPdfSolutionsArchived } from "./server-pdf-solutions";
 import { setPdfWorked } from "./server-pdf-work";
+import { saveClassRecord } from "./server-simple-class";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -70,6 +71,7 @@ function newObservation(skill:RecordData,data:RecordData,sessionId?:string) {
 }
 export async function perform(profile:Profile,action:string,data:RecordData) {
   if(!["submitResponse","saveDoubt","useResource","upsertExam","deleteExam","saveDraft","deleteDraft","upsertWord","deleteWord","updatePreferences"].includes(action)) teacherOnly(profile);
+  if(action==="saveClassRecord")return saveClassRecord(profile,data);
   if(action==="updateStudent") {
     const old=await required("students",validateStudent(data.id));
     const editable=["name","level","color","avatar","avatarFileId","priorities","nextStep","mainActivityId","alternativeActivityId","pinnedResourceIds","curriculumFocus","subjectPlan","secondTermSubjects"];
