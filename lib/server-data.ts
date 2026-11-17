@@ -7,6 +7,7 @@ import { reconcileSeedRecord, sameSeedValue, type SeedDomain } from "./curriculu
 import { database, HttpError, type Profile } from "./server-auth";
 import { avatarUrl } from "./server-avatar";
 import { fileIdFromUrl } from "./server-pdf-solutions";
+import { learningContentAllowed, learningSubjectEnabled, learningStudentView, learningFileAllowed } from "./learning-content";
 
 export type RecordData = Record<string, any>;
 export const tables = ["students","subjects","skills","sessions","resources","activities","assignments","responses","evidence","observations","doubts","exams","files","drafts","word_entries"] as const;
@@ -90,7 +91,7 @@ export async function snapshot(profile:Profile) {
   const all=await Promise.all(tables.map(async table=>({table,items:await list(table)})));
   const files=new Map((all.find(x=>x.table==="files")?.items||[]).map(file=>[file.id,file]));
   const students=new Map((all.find(x=>x.table==="students")?.items||[]).map(student=>[student.id,student]));
-  const references={resources:new Map((all.find(x=>x.table==="resources")?.items||[]).map(item=>[item.id,item])),activities:new Map((all.find(x=>x.table==="activities")?.items||[]).map(item=>[item.id,item]))};
+  const references={resources:new Map((all.find(x=>x.table==="resources")?.items||[]).map(item=>[item.id,item])),activities:new Map((all.find(x=>x.table==="activities")?.items||[]).map(item=>[item.id,item])),skills:new Map((all.find(x=>x.table==="skills")?.items||[]).map(item=>[item.id,item]))};
   for(const {table,items} of all)result[table]=items.flatMap(item=>{const projected=projectRecord(profile,table,item,files,students,references);return projected?[projected]:[];});
   const pupilOrder=new Map([["rocio",0],["alejandra",1]]);result.students.sort((a,b)=>(pupilOrder.get(a.id)??2)-(pupilOrder.get(b.id)??2));
   // An assignment never makes another student's reusable activity available.
@@ -99,7 +100,7 @@ export async function snapshot(profile:Profile) {
   return result;
 }
 function fileVisible(file:RecordData|undefined,profile:Profile){return Boolean(file&&file.purpose!=="avatar"&&file.purpose!=="solution"&&file.studentId===profile&&file.shared===true&&file.detached!==true);}
-type FileReferences={resources:Map<string,RecordData>;activities:Map<string,RecordData>};
+type FileReferences={resources:Map<string,RecordData>;activities:Map<string,RecordData>;skills?:Map<string,RecordData>};
 function linkedFileIds(item:RecordData){return [...(item.fileId?[item.fileId]:[]),...(Array.isArray(item.fileIds)?item.fileIds:[]),fileIdFromUrl(item.url)].filter((id):id is string=>typeof id==="string"&&Boolean(id));}
 function referencesSolution(item:RecordData,files:Map<string,RecordData>,references:FileReferences):boolean{
   const direct=(record:RecordData)=>linkedFileIds(record).some(id=>files.get(id)?.purpose==="solution");
@@ -108,21 +109,35 @@ function referencesSolution(item:RecordData,files:Map<string,RecordData>,referen
   const activity=references.activities.get(item.activityId);
   return Boolean(activity&&(direct(activity)||(references.resources.has(activity.resourceId)&&direct(references.resources.get(activity.resourceId)!))));
 }
+function learningDisabled(item:RecordData,profile:Profile,references:FileReferences):boolean{
+  if(!learningSubjectEnabled(profile,item.subject||item.subjectId||item.skillId))return true;
+  const skill=references.skills?.get(item.skillId);if(skill&&!learningSubjectEnabled(profile,skill.subject))return true;
+  const resource=references.resources.get(item.resourceId);if(resource&&!learningSubjectEnabled(profile,resource.subject||resource.skillId))return true;
+  const activity=references.activities.get(item.activityId);
+  if(activity){if(!learningSubjectEnabled(profile,activity.subject||activity.skillId))return true;const linked=references.resources.get(activity.resourceId);if(linked&&!learningSubjectEnabled(profile,linked.subject||linked.skillId))return true;}
+  return false;
+}
+function currentStudentLearning(item:RecordData,references:FileReferences):RecordData{
+  const projected=learningStudentView(item),profile=projected.id as Profile;
+  for(const key of ["favoriteResourceIds","pinnedResourceIds"])if(Array.isArray(projected[key]))projected[key]=projected[key].filter((id:string)=>{const resource=references.resources.get(id);return !resource||!learningDisabled(resource,profile,references);});
+  for(const key of ["mainActivityId","alternativeActivityId"]){const activity=references.activities.get(projected[key]);if(activity&&learningDisabled(activity,profile,references))delete projected[key];}
+  return projected;
+}
 function classResourceVisible(id:unknown,profile:Profile,files:Map<string,RecordData>,references:FileReferences):boolean{
   if(typeof id!=="string")return false;
   const resource=references.resources.get(id);
-  return Boolean(resource&&allowedContent(resource,profile)&&resource.shared!==false&&resource.detached!==true&&linkedFileIds(resource).every(fileId=>fileVisible(files.get(fileId),profile)));
+  return Boolean(resource&&learningContentAllowed(resource,profile)&&!learningDisabled(resource,profile,references)&&resource.shared!==false&&resource.detached!==true&&linkedFileIds(resource).every(fileId=>fileVisible(files.get(fileId),profile)));
 }
 function classActivityVisible(id:unknown,profile:Profile,files:Map<string,RecordData>,references:FileReferences):boolean{
   if(typeof id!=="string")return false;
   const activity=references.activities.get(id);
-  return Boolean(activity&&allowedContent(activity,profile)&&activity.shared!==false&&activity.detached!==true&&linkedFileIds(activity).every(fileId=>fileVisible(files.get(fileId),profile))&&(!activity.resourceId||classResourceVisible(activity.resourceId,profile,files,references)));
+  return Boolean(activity&&learningContentAllowed(activity,profile)&&!learningDisabled(activity,profile,references)&&activity.shared!==false&&activity.detached!==true&&linkedFileIds(activity).every(fileId=>fileVisible(files.get(fileId),profile))&&(!activity.resourceId||classResourceVisible(activity.resourceId,profile,files,references)));
 }
 export function projectRecord(profile:Profile,table:TableName,item:RecordData,files:Map<string,RecordData>=new Map(),students:Map<string,RecordData>=new Map(),references:FileReferences={resources:new Map(),activities:new Map()}):RecordData|null{
   if(table==="files"&&item.purpose==="avatar")return null;
   const linked=[...(item.fileId?[item.fileId]:[]),...(Array.isArray(item.fileIds)?item.fileIds:[])];
   if(profile==="teacher"){
-    const projected=teacherDTO(item);
+    const projected=table==="students"?currentStudentLearning(teacherDTO(item),references):teacherDTO(item);
     if(table==="files"&&item.purpose==="solution"){delete projected._solutionUploadNonce;delete projected._solutionRestoreOperations;}
     if(table==="students"){delete projected.avatarUrl;const url=avatarUrl(item,files.get(item.avatarFileId));if(url)projected.avatarUrl=url;}
     if((table==="resources"||table==="evidence")&&linked.length){projected.fileUnavailable=linked.some(id=>{const f=files.get(id);return !f||f.purpose==="avatar"||f.detached===true||f.shared!==true;});projected.fileDetached=linked.some(id=>files.get(id)?.detached===true);}
@@ -130,10 +145,12 @@ export function projectRecord(profile:Profile,table:TableName,item:RecordData,fi
   }
   if(!allowedContent(item,profile)||table==="observations"||(table==="students"&&item.id!==profile)||(table==="sessions"&&item.status!=="realizada"))return null;
   if(["resources","activities","assignments","drafts","responses","word_entries"].includes(table)&&referencesSolution(item,files,references))return null;
+  if(["skills","resources","activities","assignments","drafts","responses","evidence","word_entries"].includes(table)&&learningDisabled(item,profile,references))return null;
   if(table==="files"&&!fileVisible(item,profile))return null;
+  if(table==="files"&&!learningFileAllowed(item.id,profile,[...references.resources.values(),...references.activities.values()]))return null;
   if(table==="evidence"&&(item.shared!==true||item.detached===true))return null;
   if((table==="resources"||table==="evidence")&&(item.detached===true||item.shared===false||linked.some(id=>!fileVisible(files.get(id),profile))))return null;
-  const projected=studentDTO(table,item);
+  const projected=table==="students"?currentStudentLearning(studentDTO(table,item),references):studentDTO(table,item);
   if(table==="students"){
     for(const key of ["favoriteResourceIds","pinnedResourceIds"])if(Array.isArray(projected[key]))projected[key]=projected[key].filter((id:string)=>{const resource=references.resources.get(id);return !resource||!referencesSolution(resource,files,references);});
     for(const key of ["mainActivityId","alternativeActivityId"]){const activity=references.activities.get(projected[key]);if(activity&&referencesSolution(activity,files,references))delete projected[key];}
@@ -144,22 +161,24 @@ export function projectRecord(profile:Profile,table:TableName,item:RecordData,fi
     if(projected.activityIds!==undefined)projected.activityIds=Array.isArray(projected.activityIds)?projected.activityIds.filter((id:unknown)=>classActivityVisible(id,profile,files,references)):[];
   }
   if(table==="students"){const url=avatarUrl(item,files.get(item.avatarFileId));if(url)projected.avatarUrl=url;}
-  if(Array.isArray(projected.fileIds))projected.fileIds=projected.fileIds.filter((id:string)=>fileVisible(files.get(id),profile));
+  if(Array.isArray(projected.fileIds))projected.fileIds=projected.fileIds.filter((id:string)=>fileVisible(files.get(id),profile)&&learningFileAllowed(id,profile,[...references.resources.values(),...references.activities.values()]));
   if(table==="resources")projected.pinned=Boolean(students.get(profile)?.pinnedResourceIds?.includes(item.id));
   return projected;
 }
 export async function actionPatch(profile:Profile,changes:Changes){
   const patch:Partial<Record<TableName,RecordData[]>>={},removed:Partial<Record<TableName,string[]>>={};
   const records=await Promise.all([...changes].map(async([table,ids])=>({table,ids:[...ids],rows:await Promise.all([...ids].map(id=>get(table,id)))})));
-  const references:FileReferences={resources:new Map(),activities:new Map()};
-  const activityIds=new Set<string>(),resourceIds=new Set<string>();
+  const references:FileReferences={resources:new Map(),activities:new Map(),skills:new Map()};
+  const activityIds=new Set<string>(),resourceIds=new Set<string>(),skillIds=new Set<string>();
   for(const {rows}of records)for(const row of rows)if(row){if(Array.isArray(row.activityIds))for(const id of row.activityIds)if(typeof id==="string")activityIds.add(id);if(Array.isArray(row.resourceIds))for(const id of row.resourceIds)if(typeof id==="string")resourceIds.add(id);}
-  for(const {table,rows}of records)for(const row of rows)if(row){if(table==="activities")references.activities.set(row.id,row);if(table==="resources")references.resources.set(row.id,row);if(row.activityId)activityIds.add(row.activityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);if(row.resourceId)resourceIds.add(row.resourceId);if(table==="students"){for(const id of [...row.favoriteResourceIds||[],...row.pinnedResourceIds||[]])resourceIds.add(id);if(row.mainActivityId)activityIds.add(row.mainActivityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);}}
-  if(profile!=="teacher"){
+  for(const {table,rows}of records)for(const row of rows)if(row){if(table==="activities")references.activities.set(row.id,row);if(table==="resources")references.resources.set(row.id,row);if(row.skillId)skillIds.add(row.skillId);if(row.activityId)activityIds.add(row.activityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);if(row.resourceId)resourceIds.add(row.resourceId);if(table==="students"){for(const id of [...row.favoriteResourceIds||[],...row.pinnedResourceIds||[]])resourceIds.add(id);if(row.mainActivityId)activityIds.add(row.mainActivityId);if(row.alternativeActivityId)activityIds.add(row.alternativeActivityId);}}
+  if(profile!=="teacher"||records.some(record=>record.table==="students")){
     for(const item of await Promise.all([...activityIds].filter(id=>!references.activities.has(id)).map(id=>get("activities",id))))if(item)references.activities.set(item.id,item);
     for(const item of references.activities.values())if(item.resourceId)resourceIds.add(item.resourceId);
     for(const item of await Promise.all([...resourceIds].filter(id=>!references.resources.has(id)).map(id=>get("resources",id))))if(item)references.resources.set(item.id,item);
   }
+  for(const row of [...references.resources.values(),...references.activities.values()])if(row.skillId)skillIds.add(row.skillId);
+  for(const skill of await Promise.all([...skillIds].map(id=>get("skills",id))))if(skill)references.skills!.set(skill.id,skill);
   const linkedIds=new Set<string>();for(const {table,rows}of records)for(const row of rows)if(row){for(const id of linkedFileIds(row))linkedIds.add(id);if(row.avatarFileId)linkedIds.add(row.avatarFileId);if(table==="files")linkedIds.add(row.id);}
   for(const row of [...references.resources.values(),...references.activities.values()])for(const id of linkedFileIds(row))linkedIds.add(id);
   const files=new Map<string,RecordData>();for(const file of await Promise.all([...linkedIds].map(id=>get("files",id))))if(file)files.set(file.id,file);

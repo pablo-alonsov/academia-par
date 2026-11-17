@@ -113,3 +113,9 @@ El cambio de perfil está disponible en el menú lateral y en el desplegable del
 ## Avisos por correo
 
 La conexión con Resend está preparada para notificar al docente las acciones confirmadas de Rocío y Alejandra, con el nombre visible academia PAR. El panel Hoy y esta semana muestra el estado real y los últimos avisos. Sin RESEND_API_KEY y NOTIFICATION_FROM no se envían correos. La activación, el alcance, los límites de reintento y la validación se detallan en [docs/avisos-correo.md](docs/avisos-correo.md). El destinatario y las credenciales no se exponen en los datos de las alumnas.
+
+## Banco de práctica actual
+
+Desde el 17 de noviembre de 2026, el catálogo principal incorpora 106 ejercicios adaptados a las cuatro fichas de referencia del docente. Usan códigos breves: RL (Lengua de Rocío), RM (Matemáticas de Rocío), AM (Matemáticas de Alejandra) y AF (Física y química de Alejandra). Se mantienen complementos de inglés para Rocío y sintaxis para Alejandra, también numerados. La búsqueda admite RL-01, RL01 y RL 1.
+
+Los ejercicios iniciales sustituidos quedan identificados con practiceRetired para conservar su vínculo con clases y respuestas anteriores; se excluyen del catálogo activo. Los materiales propios del docente se conservan. Inglés está retirado del aprendizaje de Alejandra, incluidos recursos compartidos y adjuntos asociados, pero permanece disponible para registrar exámenes en su calendario. Esta selección se aplica en servidor y en las vistas; no borra registros históricos.

@@ -5,6 +5,8 @@ import { ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileText, LoaderCircle
 import DateInput from "./DateInput";
 import Dialog from "./Dialog";
 import MathText from "./MathText";
+import {learningContentAllowed,learningFileAllowed} from "@/lib/learning-content";
+import {isCurrentPractice,comparePractice,practiceSearch} from "@/lib/practice-catalog";
 import { ACADEMY_START_DATE, trackingToday } from "@/lib/academy-config";
 import { getResultVersion, isCurrentResultVersion, resultStoragePrefix, RESULT_VERSION_CHANGED_EVENT } from "@/lib/client-result-state";
 import "./simple-session.css";
@@ -12,15 +14,15 @@ import "./simple-session.css";
 type Item = Record<string, any>;
 type ClassForm = { id: string; studentId: string; date: string; schoolwork: string; content: string; resourceIds: string[]; activityIds: string[]; fileIds: string[] };
 type Props = { initial: Item; data: Item; act: (action: string, payload: Item) => Promise<any>; notify: (message: string) => void; back: () => void; backLabel?: string };
-type Choice = { kind: "resourceIds" | "activityIds" | "fileIds"; id: string; title: string; subject?: string; url?: string; pdf?: boolean };
+type Choice = { kind: "resourceIds" | "activityIds" | "fileIds"; id: string; title: string; subject?: string; url?: string; pdf?: boolean; retired?:boolean };
 type Recovery = { local: ClassForm; server?: Item; message: string; legacyToken?: string };
 const text = (value: any): string => Array.isArray(value) ? value.filter(item => typeof item === "string").join("\n") : typeof value === "string" ? value : "";
 const ids = (value: any): string[] => [...new Set<string>(Array.isArray(value) ? value.filter(item => typeof item === "string" && item) : [])];
-const available = (item: Item, pupil: string) => item.studentId ? item.studentId === pupil : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(pupil);
-const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+const available = learningContentAllowed;
+const normalize = practiceSearch;
 
 function classChoices(data: Item, studentId: string): Choice[] {
-  const files = (data.files || []).filter((file: Item) => file.studentId === studentId && file.shared === true && file.detached !== true && !["avatar", "solution"].includes(file.purpose));
+  const files = (data.files || []).filter((file: Item) => file.studentId === studentId && file.shared === true && file.detached !== true && !["avatar", "solution"].includes(file.purpose) && learningFileAllowed(file.id,studentId,[...(data.resources||[]),...(data.activities||[])]));
   const safe = new Map<string, Item>(files.map((file: Item) => [file.id, file]));
   const safeLinks = (item: Item) => {
     if (item.shared === false || item.detached === true) return false;
@@ -36,7 +38,7 @@ function classChoices(data: Item, studentId: string): Choice[] {
     return { kind: "resourceIds", id: item.id, title: item.title || "Material", subject: item.subject, url: file ? `/api/files/${encodeURIComponent(file.id)}${file.type === "application/pdf" ? "?view=inline#view=FitH" : ""}` : item.url, pdf: file?.type === "application/pdf" };
   });
   const fileChoices: Choice[] = files.filter((file: Item) => !usedFiles.has(file.id)).map((file: Item) => ({ kind: "fileIds", id: file.id, title: file.name || "Archivo", url: `/api/files/${encodeURIComponent(file.id)}${file.type === "application/pdf" ? "?view=inline#view=FitH" : ""}`, pdf: file.type === "application/pdf" }));
-  const activities: Choice[] = (data.activities || []).filter((item: Item) => available(item, studentId) && safeLinks(item) && (!item.resourceId || resourceMap.has(item.resourceId))).map((item: Item) => ({ kind: "activityIds", id: item.id, title: item.title || "Actividad", subject: item.subject }));
+  const activities: Choice[] = (data.activities || []).filter((item: Item) => available(item, studentId) && safeLinks(item) && (!item.resourceId || resourceMap.has(item.resourceId))).sort(comparePractice).map((item: Item) => ({ kind: "activityIds", id: item.id, title: item.title || "Actividad", subject: item.subject,retired:!isCurrentPractice(item) }));
   return [...resourceChoices, ...fileChoices, ...activities];
 }
 function formFor(record: Item, data: Item): ClassForm {
@@ -45,7 +47,7 @@ function formFor(record: Item, data: Item): ClassForm {
   const previousActivities = simple ? record.activityIds : [record.activityId, record.alternativeActivityId, ...(data.assignments || []).filter((item: Item) => item.sessionId === record.id && item.studentId === record.studentId).map((item: Item) => item.activityId)];
   const previousFiles = simple ? record.fileIds : [...(record.fileIds || []), ...(data.files || []).filter((file: Item) => file.sessionId === record.id).map((file: Item) => file.id), ...(data.evidence || []).filter((item: Item) => item.sessionId === record.id).flatMap((item: Item) => [...(item.fileIds || []), ...(item.fileId ? [item.fileId] : [])])];
   // Direct file links already represented by a resource stay valid selections.
-  const sharedFiles = new Set((data.files || []).filter((file: Item) => file.studentId === record.studentId && file.shared === true && file.detached !== true && !["avatar", "solution"].includes(file.purpose)).map((file: Item) => file.id));
+  const sharedFiles = new Set((data.files || []).filter((file: Item) => file.studentId === record.studentId && file.shared === true && file.detached !== true && !["avatar", "solution"].includes(file.purpose) && learningFileAllowed(file.id,record.studentId,[...(data.resources||[]),...(data.activities||[])])).map((file: Item) => file.id));
   return { id: record.id, studentId: record.studentId, date: record.date || trackingToday(), schoolwork: text(record.schoolwork), content: text(record.content) || text(record.sharedSummary), resourceIds: permitted("resourceIds", record.resourceIds), activityIds: permitted("activityIds", previousActivities), fileIds: ids(previousFiles).filter(id => sharedFiles.has(id)) };
 }
 const sameForm = (a: ClassForm, b: ClassForm) => JSON.stringify(a) === JSON.stringify(b);
@@ -172,7 +174,7 @@ export default function SimpleSessionEditor({ initial, data, act, notify, back, 
     if (local) { revision.current++; setDirty(true); persist(next); } else { savedRevision.current = revision.current; setDirty(false); clearDraft(); }
   };
   const toggle = (choice: Choice) => edit({ [choice.kind]: form[choice.kind].includes(choice.id) ? form[choice.kind].filter(value => value !== choice.id) : [...form[choice.kind], choice.id] });
-  const matching = choices.filter(choice => (pickerTab === "activities" ? choice.kind === "activityIds" : choice.kind !== "activityIds") && (!query || normalize(`${choice.title} ${choice.subject || ""}`).includes(normalize(query))));
+  const matching = choices.filter(choice => (!choice.retired || form.activityIds.includes(choice.id)) && (pickerTab === "activities" ? choice.kind === "activityIds" : choice.kind !== "activityIds") && (!query || normalize(`${choice.title} ${choice.subject || ""}`).includes(normalize(query))));
   const status = recovery ? "Revisa el guardado" : error ? "No se ha guardado" : saving ? "Guardando…" : dirty ? "Cambios pendientes" : savedOnce ? "Guardado" : "";
 
   return <div className="teacher-views simple-session">

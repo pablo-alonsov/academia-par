@@ -1123,3 +1123,68 @@ test('legacy class reference arrays are filtered by owner and live visibility in
  const collected=await collectAction(async()=>trackChange('sessions','class-array-projection'));check((await actionPatch('rocio',collected.changes)).patch.sessions[0]);
  const teacherSnapshot=(await (await data.GET(request('/api/data',{cookie:(await login('teacher',pin)).cookie}))).json()).sessions[0];assert.ok(teacherSnapshot.resourceIds.includes('class-private-resource'));
 });
+
+async function englishLearningSetup(){
+ const teacher=await login('teacher',pin),pupils={rocio:(await login('rocio')).cookie,alejandra:(await login('alejandra')).cookie};await seed();
+ insertRecord('files',{id:'english-file',studentId:'alejandra',type:'application/pdf',shared:true,name:'English.pdf'});
+ insertRecord('skills',{id:'custom-language-skill',studentId:'alejandra',subject:'Inglés',title:'Speaking',state:'Por empezar'});
+ for(const resource of [
+  {id:'english-shared-resource',subject:'Inglés',title:'Shared English',suggestedStudentIds:['rocio','alejandra']},
+  {id:'english-own-resource',subject:'English',title:'Owned English',studentId:'alejandra',fileId:'english-file'},
+  {id:'current-math-resource',subject:'Matemáticas',title:'Current maths',studentId:'alejandra'},
+ ])insertRecord('resources',resource);
+ for(const activity of [
+  {id:'english-shared-activity',subject:'Inglés',title:'Shared English exercise',suggestedStudentIds:['rocio','alejandra'],type:'text',autoCheck:true,answer:'Hello',hints:[],resourceId:'english-shared-resource'},
+  {id:'english-linked-maths',subject:'Matemáticas',title:'Mislabelled linked English',studentId:'alejandra',type:'open',resourceId:'english-own-resource'},
+  {id:'retired-maths',subject:'Matemáticas',title:'Old exercise',studentId:'alejandra',type:'fraction',answer:'1/2',practiceRetired:true},
+  {id:'current-maths',subject:'Matemáticas',title:'Current exercise',studentId:'alejandra',type:'numeric',answer:'12',practiceRetired:false},
+ ])insertRecord('activities',activity);
+ insertRecord('assignments',{id:'english-assignment',studentId:'alejandra',activityId:'english-shared-activity',category:'Para casa'});
+ insertRecord('responses',{id:'english-history',studentId:'alejandra',activityId:'english-shared-activity',answer:'Hello',reviewStatus:'reviewed',feedback:'Historical feedback'});
+ insertRecord('drafts',{id:'english-draft',studentId:'alejandra',resourceId:'english-own-resource',answer:'Historical draft'});
+ insertRecord('evidence',{id:'english-evidence',studentId:'alejandra',skillId:'custom-language-skill',title:'Historical English evidence',shared:true});
+ insertRecord('word_entries',{id:'english-word',studentId:'alejandra',resourceId:'english-shared-resource',original:'hello',corrected:'Hello'});
+ insertRecord('assignments',{id:'retired-assignment',studentId:'alejandra',activityId:'retired-maths',category:'Para hacer en clase'});
+ insertRecord('responses',{id:'retired-history',studentId:'alejandra',activityId:'retired-maths',answer:'2/4',autoResult:'correct',reviewStatus:'reviewed'});
+ const row=sqlite.prepare('SELECT data FROM students WHERE id=?').get('alejandra'),student=JSON.parse(row.data);
+ const profileData={...student,subjectPlan:[{subject:'Inglés',topics:'Global English'},{subject:'Matemáticas',topics:'Porcentajes'}],priorities:['Inglés global','Fracciones'],curriculumFocus:['English','Densidad'],nextStep:'Repasar inglés',mainActivityId:'english-shared-activity',alternativeActivityId:'english-linked-maths',favoriteResourceIds:['english-shared-resource','current-math-resource'],pinnedResourceIds:['english-own-resource','current-math-resource']};sqlite.prepare('UPDATE students SET data=? WHERE id=?').run(JSON.stringify(profileData),'alejandra');
+ insertRecord('sessions',{id:'historical-english-class',studentId:'alejandra',date:'2026-11-16',status:'realizada',content:'Historical English class text stays intact.',resourceIds:['english-own-resource','current-math-resource'],activityIds:['english-shared-activity','current-maths'],activityId:'english-shared-activity',fileIds:['english-file']});
+ return {teacher,pupils};
+}
+
+test('Alejandra English learning disappears from snapshots without deleting history, while Rocio shared English and retired maths history remain available',async()=>{
+ const {teacher,pupils}=await englishLearningSetup(),before=pdfSharingDomain();
+ const a=await (await data.GET(request('/api/data',{cookie:pupils.alejandra}))).json(),r=await (await data.GET(request('/api/data',{cookie:pupils.rocio}))).json();
+ for(const [table,id] of [['resources','english-shared-resource'],['resources','english-own-resource'],['activities','english-shared-activity'],['activities','english-linked-maths'],['skills','custom-language-skill'],['assignments','english-assignment'],['responses','english-history'],['drafts','english-draft'],['evidence','english-evidence'],['word_entries','english-word'],['files','english-file']])assert.equal(a[table].some(row=>row.id===id),false,table+':'+id);
+ assert.ok(r.resources.some(row=>row.id==='english-shared-resource'));assert.ok(r.activities.some(row=>row.id==='english-shared-activity'));
+ assert.equal(a.activities.find(row=>row.id==='retired-maths').practiceRetired,true);assert.equal(a.activities.find(row=>row.id==='current-maths').practiceRetired,false);assert.equal(a.responses.find(row=>row.id==='retired-history').answer,'2/4');assert.ok(a.assignments.some(row=>row.id==='retired-assignment'));
+ const own=a.students[0];assert.deepEqual(own.subjectPlan,[{subject:'Matemáticas',topics:'Porcentajes'}]);assert.deepEqual(own.priorities,['Fracciones']);assert.deepEqual(own.curriculumFocus,['Densidad']);assert.equal(own.nextStep,'');assert.equal(own.mainActivityId,undefined);assert.equal(own.alternativeActivityId,undefined);assert.deepEqual(own.favoriteResourceIds,['current-math-resource']);assert.deepEqual(own.pinnedResourceIds,['current-math-resource']);
+ const lesson=a.sessions.find(row=>row.id==='historical-english-class');assert.equal(lesson.content,'Historical English class text stays intact.');assert.deepEqual(lesson.resourceIds,['current-math-resource']);assert.deepEqual(lesson.activityIds,['current-maths']);assert.deepEqual(lesson.fileIds,[]);assert.equal(lesson.activityId,undefined);
+ const privateData=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.ok(privateData.responses.some(row=>row.id==='english-history'));assert.ok(privateData.activities.some(row=>row.id==='english-shared-activity'));assert.deepEqual(privateData.students.find(row=>row.id==='alejandra').subjectPlan,[{subject:'Matemáticas',topics:'Porcentajes'}]);
+ assert.deepEqual(pdfSharingDomain(),before);
+});
+
+test('English learning is rejected by direct IDs and teacher assignments, but Alejandra can still register English exams',async()=>{
+ const {teacher,pupils}=await englishLearningSetup(),before=pdfSharingDomain();
+ await mutate(pupils.alejandra,'submitResponse',{activityId:'english-shared-activity',answer:'Hello'},403);
+ await mutate(pupils.alejandra,'submitResponse',{activityId:'english-linked-maths',answer:'12'},403);
+ await mutate(pupils.alejandra,'useResource',{resourceId:'english-shared-resource',answer:'Used'},403);
+ for(const target of [{activityId:'english-shared-activity'},{activityId:'english-linked-maths'},{resourceId:'english-own-resource'}])await mutate(pupils.alejandra,'saveDraft',{...target,answer:'Attempt'},403);
+ await mutate(teacher.cookie,'assignActivity',{studentId:'alejandra',activityId:'english-shared-activity',category:'Para casa'},400);
+ await mutate(teacher.cookie,'assignActivity',{studentId:'alejandra',activityId:'english-linked-maths',category:'Para casa'},403);
+ await mutate(teacher.cookie,'updateStudent',{id:'alejandra',mainActivityId:'english-shared-activity'},403);
+ for(const selection of [{resourceIds:['english-own-resource']},{activityIds:['english-shared-activity']},{fileIds:['english-file']}])await mutate(teacher.cookie,'saveClassRecord',simpleClassPayload({id:'no-english-class',studentId:'alejandra',...selection}),400);
+ assert.deepEqual(pdfSharingDomain(),before);
+ const exam=await mutate(pupils.alejandra,'upsertExam',{id:'english-calendar-exam',studentId:'alejandra',title:'English exam',subject:'Inglés',date:'2026-11-20',topics:'School exam topics'});
+ assert.equal(exam.patch.exams[0].subject,'Inglés');const a=await (await data.GET(request('/api/data',{cookie:pupils.alejandra}))).json();assert.ok(a.subjects.some(row=>row.name==='Inglés'));assert.equal(a.exams.find(row=>row.id==='english-calendar-exam').subject,'Inglés');
+ const successful=await mutate(pupils.rocio,'submitResponse',{activityId:'english-shared-activity',answer:'Hello'});assert.equal(successful.autoResult,'correct');
+});
+
+test('English records and references are omitted consistently from student action patches, while archival storage stays untouched',async()=>{
+ const {pupils}=await englishLearningSetup(),before=pdfSharingDomain();
+ const changed=await collectAction(async()=>{for(const [table,id] of [['activities','english-shared-activity'],['activities','english-linked-maths'],['resources','english-own-resource'],['responses','english-history'],['assignments','english-assignment'],['drafts','english-draft'],['evidence','english-evidence'],['files','english-file'],['students','alejandra'],['sessions','historical-english-class']])trackChange(table,id);});
+ const result=await actionPatch('alejandra',changed.changes);
+ assert.ok(result.removed.activities.includes('english-shared-activity'));assert.ok(result.removed.activities.includes('english-linked-maths'));assert.ok(result.removed.resources.includes('english-own-resource'));assert.ok(result.removed.responses.includes('english-history'));assert.ok(result.removed.assignments.includes('english-assignment'));assert.ok(result.removed.drafts.includes('english-draft'));assert.ok(result.removed.evidence.includes('english-evidence'));assert.ok(result.removed.files.includes('english-file'));
+ assert.equal(result.patch.students[0].mainActivityId,undefined);assert.deepEqual(result.patch.sessions[0].activityIds,['current-maths']);assert.deepEqual(result.patch.sessions[0].resourceIds,['current-math-resource']);assert.deepEqual(result.patch.sessions[0].fileIds,[]);
+ assert.deepEqual(pdfSharingDomain(),before);
+});

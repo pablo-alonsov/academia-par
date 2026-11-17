@@ -1,5 +1,6 @@
 import type { Profile } from "./server-auth";
 import type { RecordData, TableName } from "./server-data";
+import { learningStudentView } from "./learning-content";
 function pick(item:RecordData,keys:string[]) { return Object.fromEntries(keys.filter(k=>item[k]!==undefined).map(k=>[k,item[k]])); }
 const COMMON=["id","studentId","updatedAt"];
 const STUDENT_FIELDS:Partial<Record<TableName,string[]>>={
@@ -7,7 +8,7 @@ const STUDENT_FIELDS:Partial<Record<TableName,string[]>>={
   skills:["subject","title","state","reviewNeeded","lastCheck","evidence","nextStep","reviewDate","explanation","phase"],
   sessions:["date","subject","subjects","objective","duration","status","content","sharedSummary","explanation","materials","originalText","revisedText","nextStep","activityId","alternativeActivityId","closedAt","fileIds","resourceIds","activityIds"],
   resources:["title","url","fileId","fileIds","subject","skillId","type","duration","objective","instructions","level","description","accessNote","accessStatus","checkedAt","suggestedStudentIds","phase","availableFromTerm","supportMode","collection","examMode"],
-  activities:["title","objective","subject","skillId","level","duration","instructions","materials","checkMethod","check","type","autoCheck","options","hints","suggestedStudentIds","resourceId","url","phase","availableFromTerm","supportMode"],
+  activities:["title","objective","subject","skillId","level","duration","instructions","materials","checkMethod","check","type","autoCheck","options","hints","suggestedStudentIds","resourceId","url","phase","availableFromTerm","supportMode","practiceRetired"],
   assignments:["activityId","sessionId","category","dueDate","title"],
   responses:["assignmentId","activityId","resourceId","answer","hintsUsed","selfAssessment","comment","procedure","submissionId","autoResult","reviewStatus","feedback","result","fileIds","createdAt","reviewedAt","kind"],
   evidence:["skillId","sessionId","title","text","fileId","fileIds","createdAt","shared"],
@@ -26,7 +27,8 @@ export function studentDTO(table:TableName,item:RecordData) {
   if(table==="subjects") return pick(item,["id","name","color"]);
   const projected=pick(item,[...COMMON,...STUDENT_FIELDS[table] || []]);
   if(table==="activities"&&typeof projected.autoCheck!=="boolean")delete projected.autoCheck;
-  return projected;
+  if(table==="activities"&&typeof projected.practiceRetired!=="boolean")delete projected.practiceRetired;
+  return table==="students"?learningStudentView(projected):projected;
 }
 export function teacherDTO<T>(value:T):T{
   if(Array.isArray(value))return value.map(teacherDTO) as T;

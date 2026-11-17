@@ -10,6 +10,8 @@ import { isTrackingDate } from "@/lib/academy-config";
 import StudentHome from "./StudentHome";
 import StudentClassDetail from "./StudentClassDetail";
 import MathText from "./MathText";
+import {learningContentAllowed} from "@/lib/learning-content";
+import {isCurrentPractice,practiceSearch,comparePractice} from "@/lib/practice-catalog";
 import { responsesForActivity, responsesForResource, linkedResourceActivity } from "@/lib/resource-work";
 import { hasCompletedActivity, needsActivityRetry, type HomeWork } from "./student-home";
 import { hasCompletedAssignment } from '@/lib/activity-completion';
@@ -24,7 +26,7 @@ type Item = Record<string, any>;
 type PracticeSection = "exercises" | "resources" | "exam-prep";
 type Props = { data: Item; profile: string; tab: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void; onNavigate?: (tab: string) => void | Promise<void>; onRefresh?: () => Promise<void>; personalizationRequested?: boolean; onPersonalizationOpened?: () => void };
 const plain = (value: any) => Array.isArray(value) ? value.join(" · ") : typeof value === "string" ? value : "";
-const searchText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim();
+const searchText = practiceSearch;
 const sortRecent = (a: Item, b: Item) => (b.createdAt || b.updatedAt || "").localeCompare(a.createdAt || a.updatedAt || "");
 function Empty({ icon: Icon = BookOpen, title, children }: any) { return <div className="sv-empty"><span className="sv-empty-icon"><Icon size={25}/></span><h3>{title}</h3><p>{children}</p></div>; }
 function Subject({ value }: { value: string }) { return <span className={`sv-subject ${value?.includes("Lengua") ? "violet" : value?.includes("Física") ? "green" : "blue"}`}><BookOpen size={14}/>{value || "General"}</span>; }
@@ -56,8 +58,9 @@ function ResourceCard({ resource, pdf, material, unread, consulted, favorite, bu
 export default function StudentViews({ data, profile, tab, act, notify, onNavigate, onRefresh, personalizationRequested, onPersonalizationOpened }: Props) {
   const navigation = usePlatformNavigation(), detail = navigation.route.detail;
   const student = (data.students || []).find((item: Item) => item.id === profile) || { id: profile, name: profile === "rocio" ? "Rocío" : "Alejandra", priorities: [] };
-  const activities: Item[] = (data.activities || []).filter((item: Item) => item.studentId ? item.studentId === profile : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(profile));
-  const resources: Item[] = (data.resources || []).filter((item: Item) => item.studentId ? item.studentId === profile : !item.suggestedStudentIds?.length || item.suggestedStudentIds.includes(profile));
+  const activities: Item[] = (data.activities || []).filter((item: Item) => learningContentAllowed(item,profile));
+  const practiceActivities=activities.filter(isCurrentPractice).sort(comparePractice);
+  const resources: Item[] = (data.resources || []).filter((item: Item) => learningContentAllowed(item,profile));
   const skills: Item[] = (data.skills || []).filter((item: Item) => item.studentId === profile);
   const assignments: Item[] = (data.assignments || []).filter((item: Item) => item.studentId === profile);
   const responses: Item[] = (data.responses || []).filter((item: Item) => item.studentId === profile).sort(sortRecent);
@@ -81,7 +84,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   useEffect(() => { const refresh = () => setLocalVersion(value => value + 1), reviews = () => setReadVersion(value => value + 1); window.addEventListener("arp:drafts-changed", refresh); window.addEventListener("storage", refresh); window.addEventListener("arp-review-read-changed", reviews); initializeReadState(profile, data.responses || [], data.doubts || []); return () => { window.removeEventListener("arp:drafts-changed", refresh); window.removeEventListener("storage", refresh); window.removeEventListener("arp-review-read-changed", reviews); }; }, [profile]);
   useEffect(() => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); }, [tab, profile]);
   useEffect(() => { if (sessionId) sessionHeading.current?.focus({ preventScroll: true }); }, [sessionId]);
-  const pendingWork = pendingTeacherAssignments(profile, assignments, activities, responses, student.mainActivityId);
+  const pendingWork = pendingTeacherAssignments(profile, assignments, practiceActivities, responses, student.mainActivityId);
   const pendingActivityIds = new Set(pendingWork.map(work => work.activity.id));
   const assignedHeading = useRef<HTMLHeadingElement>(null);
   const assignmentFor = (id: string) => assignments.find(item => item.activityId === id && item.category !== "Opcionales" && !hasCompletedAssignment(activities.find(activity => activity.id === id) || {}, item, responses)) || assignments.find(item => item.activityId === id);
@@ -127,13 +130,13 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const pendingDoubts = doubts.filter(item => !item.resolvedAt && item.status !== "resolved"), answeredDoubts = doubts.filter(item => item.resolvedAt || item.status === "resolved").sort((a, b) => (b.resolvedAt || "").localeCompare(a.resolvedAt || ""));
   const subjects = [...new Set([...skills, ...activities, ...resources].map(item => item.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
   const setPracticeView = (mode: string) => { setPracticeMode(mode); setLimit(5); };
-  const matchingActivities = activities.filter(item => {
+  const matchingActivities = practiceActivities.filter(item => {
     if (pendingActivityIds.has(item.id)) return false;
     if ((item.type === "external" || item.type === "paper") && resources.some(resource => item.id === `act-${resource.id}` && item.resourceId === resource.id)) return false;
     const assignment = assignmentFor(item.id), completed = hasCompletedActivity(item, assignment, responses);
     const modeMatches = practiceMode === "Todos" || practiceMode === "Sin hacer" && !completed || practiceMode === "Hechos" && completed;
     return modeMatches && (!subject || item.subject === subject) && (!skillFilter || item.skillId === skillFilter) && (!searchText(search) || searchText([item.title, item.objective, item.instructions, skills.find(skill => skill.id === item.skillId)?.title].filter(Boolean).join(" ")).includes(searchText(search)));
-  }).sort((a, b) => (a.id === student.mainActivityId ? -1 : b.id === student.mainActivityId ? 1 : (practiceMode === "Hechos" ? sortRecent(latestFor(a.id) || {}, latestFor(b.id) || {}) : Number(Boolean(assignmentFor(b.id) && assignmentFor(b.id)?.category !== "Opcionales")) - Number(Boolean(assignmentFor(a.id) && assignmentFor(a.id)?.category !== "Opcionales")) || a.title.localeCompare(b.title, "es"))));
+  }).sort((a, b) => (a.id === student.mainActivityId ? -1 : b.id === student.mainActivityId ? 1 : (practiceMode === "Hechos" ? sortRecent(latestFor(a.id) || {}, latestFor(b.id) || {}) : Number(Boolean(assignmentFor(b.id) && assignmentFor(b.id)?.category !== "Opcionales")) - Number(Boolean(assignmentFor(a.id) && assignmentFor(a.id)?.category !== "Opcionales")) || comparePractice(a,b))));
   const visibleActivities = matchingActivities.slice(0, limit), groupedActivities = new Map<string, Item[]>();
   visibleActivities.forEach(item => groupedActivities.set(item.subject, [...(groupedActivities.get(item.subject) || []), item]));
   const classResources = resources.filter(item => !isExamPreparation(item));
@@ -153,7 +156,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const clearFilters = () => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); };
   const selectedActivity = activities.find(item => item.id === activityId), selectedResource = resources.find(item => item.id === resourceId), selectedSession = sessions.find(item => item.id === sessionId);
   const homeDraftOptions: HomeWork[] = drafts.flatMap<HomeWork>(draft => {
-    const activity = activities.find(item => item.id === draft.activityId);
+    const activity = practiceActivities.find(item => item.id === draft.activityId);
     if (activity) return [{ key: `activity:${activity.id}`, activity, assignment: assignmentFor(activity.id), draft }];
     const resource = resources.find(item => item.id === draft.resourceId);
     if (!resource) return [];
@@ -168,7 +171,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   return <div className={`student-views sv-stack ss-student-lists sv-${profile}`} style={{ "--sv-accent": color.color, "--sv-soft": color.soft } as React.CSSProperties} data-review-version={readVersion}>
     {tab === "Inicio" && <>
       <div className="sv-welcome"><div className="row sw-student-heading"><StudentAvatar student={student}/><div><span className="eyebrow">INICIO</span><h1>{student.name}</h1><p>{student.level}</p></div></div></div>
-      <StudentHome student={student} activities={activities} resources={resources} assignments={assignments} responses={responses} skills={skills} draftOptions={homeDraftOptions} attemptedIds={activities.filter(item => hasCompletedActivity(item, assignmentFor(item.id), responses)).map(item => item.id)} sessions={sessions} latestCheck={latestCheck} exams={exams} feedback={feedback} onOpenWork={openHomeWork} onOpenSession={openSession} onFeedback={showFeedback} onNavigate={onNavigate}/>
+      <StudentHome student={student} activities={activities} practiceActivities={practiceActivities} resources={resources} assignments={assignments} responses={responses} skills={skills} draftOptions={homeDraftOptions} attemptedIds={activities.filter(item => hasCompletedActivity(item, assignmentFor(item.id), responses)).map(item => item.id)} sessions={sessions} latestCheck={latestCheck} exams={exams} feedback={feedback} onOpenWork={openHomeWork} onOpenSession={openSession} onFeedback={showFeedback} onNavigate={onNavigate}/>
       {(pendingDoubts.length > 0 || answeredDoubts.length > 0 || previousLocalQuestions.length > 0) && <details className="card ss-home-disclosure" onToggle={event => { if (event.currentTarget.open && answeredDoubts.length) markRead(profile, answeredDoubts, "doubt"); }}>
         <summary>Preguntas anteriores{answeredDoubts.some(item => isUnread(profile, item, "doubt")) && <span className="badge blue">Respuesta nueva</span>}</summary>
         <div className="ss-disclosure-content sv-stack">

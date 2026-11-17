@@ -1,7 +1,8 @@
 import { cleanString, database, HttpError, teacherOnly, validateStudent, type Profile } from "./server-auth";
-import { allowedContent, get, required, trackChange, type RecordData } from "./server-data";
+import { get, list, required, trackChange, type RecordData } from "./server-data";
 import { ACADEMY_START_DATE, isTrackingDate } from "./academy-config";
 import { fileIdFromUrl } from "./server-pdf-solutions";
+import { learningContentAllowed, learningFileAllowed } from "./learning-content";
 
 function recordDate(value: unknown) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(new Date(value).getTime()) || new Date(value).toISOString().slice(0, 10) !== value) throw new HttpError(400, "Indica una fecha válida para la clase.");
@@ -30,20 +31,22 @@ export async function saveClassRecord(profile: Profile, data: RecordData) {
   if (data.publish && !content.trim()) throw new HttpError(400, "Resume brevemente lo que habéis hecho en la sesión.");
   const resourceIds = selectedIds(data.resourceIds), activityIds = selectedIds(data.activityIds), fileIds = selectedIds(data.fileIds);
   const files = new Map<string, RecordData>(), resources = new Map<string, RecordData>();
+  let learningRecords: RecordData[] | undefined;
   const checkFile = async (fileId: string) => {
     const file = files.get(fileId) || await required("files", fileId); files.set(fileId, file);
     if (file.studentId !== studentId || file.shared !== true || file.detached === true || ["avatar", "solution"].includes(file.purpose)) throw new HttpError(400, "Elige un archivo compartido con esta alumna.");
+    if (studentId === "alejandra") { learningRecords ||= [...await list("resources"), ...await list("activities")]; if (!learningFileAllowed(fileId, studentId, learningRecords)) throw new HttpError(400, "Este archivo no está en el plan de trabajo de la alumna."); }
   };
   const checkResource = async (resourceId: string) => {
     const resource = resources.get(resourceId) || await required("resources", resourceId); resources.set(resourceId, resource);
-    if (!allowedContent(resource, studentId) || resource.shared === false || resource.detached === true) throw new HttpError(400, "Este material no está disponible para la alumna.");
+    if (!learningContentAllowed(resource, studentId) || resource.shared === false || resource.detached === true) throw new HttpError(400, "Este material no está disponible para la alumna.");
     for (const fileId of linkedFileIds(resource)) await checkFile(fileId);
   };
   for (const fileId of fileIds) await checkFile(fileId);
   for (const resourceId of resourceIds) await checkResource(resourceId);
   for (const activityId of activityIds) {
     const activity = await required("activities", activityId);
-    if (!allowedContent(activity, studentId) || activity.shared === false || activity.detached === true) throw new HttpError(400, "Esta actividad no está disponible para la alumna.");
+    if (!learningContentAllowed(activity, studentId) || activity.shared === false || activity.detached === true) throw new HttpError(400, "Esta actividad no está disponible para la alumna.");
     for (const fileId of linkedFileIds(activity)) await checkFile(fileId);
     if (activity.resourceId) await checkResource(activity.resourceId);
   }

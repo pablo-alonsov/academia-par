@@ -39,6 +39,22 @@ test('caret powers distinguish a negative base from the negative of a power',()=
   assert.deepEqual(tokenize('2 ^ (+3)'),[power('2','+3','2 elevado a más 3')]);
 });
 
+test('parenthesized fractional powers preserve the base, sign and negative exponent as one token',()=>{
+  assert.deepEqual(tokenize('(-2/3)^2'),[{type:'power',base:'(-2/3)',exponent:'2',spoken:'menos 2 dividido entre 3 entre paréntesis elevado a 2',fractionBase:{numerator:'-2',denominator:'3'}}]);
+  assert.deepEqual(tokenize('(1/2)^(-1)'),[{type:'power',base:'(1/2)',exponent:'-1',spoken:'1 dividido entre 2 entre paréntesis elevado a menos 1',fractionBase:{numerator:'1',denominator:'2'}}]);
+  assert.deepEqual(tokenize('(−1/2)^(-2)'),[{type:'power',base:'(−1/2)',exponent:'-2',spoken:'menos 1 dividido entre 2 entre paréntesis elevado a menos 2',fractionBase:{numerator:'−1',denominator:'2'}}]);
+  assert.deepEqual(tokenize('−(2/3)^2'),[text('−'),{type:'power',base:'(2/3)',exponent:'2',spoken:'2 dividido entre 3 entre paréntesis elevado a 2',fractionBase:{numerator:'2',denominator:'3'}}]);
+  assert.deepEqual(tokenize('( 3 / −4 )⁻²'),[{type:'power',base:'( 3 / −4 )',exponent:'−2',spoken:'3 dividido entre menos 4 entre paréntesis elevado a menos 2',fractionBase:{numerator:'3',denominator:'−4'}}]);
+});
+
+test('a fractional power keeps the surrounding operation order and does not evaluate it',()=>{
+  const tokens=tokenize('((−1/2)^(-2) − 3) ÷ ((3/2)^(-1) + 1/6)');
+  assert.deepEqual(tokens.map(token=>token.type),['text','power','text','power','text','fraction','text']);
+  assert.deepEqual(tokens.filter(token=>token.type==='text').map(token=>token.text),['(', ' − 3) ÷ (', ' + ', ')']);
+  assert.deepEqual(tokens.filter(token=>token.type==='power').map(token=>[token.base,token.exponent]),[['(−1/2)','-2'],['(3/2)','-1']]);
+  for(const input of ['(1/2 + 1)^2','((1/2))^2','(1.5/2)^2','(1/2.5)^2','(1234567890123/2)^2','(1/2)^1234567','(03/04)^2','1/(2/3)^2'])plain(input);
+});
+
 test('explicit empty boxes are complete fraction parts or exponents with meaningful accessible labels',()=>{
   assert.deepEqual(tokenize('3/5 = □/20'),[fraction('3','5'),text(' = '),fraction('□','20','casilla dividido entre 20')]);
   assert.deepEqual(tokenize('3/□'),[fraction('3','□','3 dividido entre casilla')]);
@@ -64,7 +80,7 @@ test('simple integer roots are displayed without computing a result or changing 
 });
 
 test('unsupported compound formulae remain literal without styling a misleading inner fragment',()=>{
-  for(const input of ['1/(-3)','1/(2/3)','1/(2^3)','(-3)/4','2^(3+1)','2^3^4','(2^3)^2','(2^3)²','(2/3)^2','2 ^ (3+1)','2^(3^4)','2^((3+1))','√(a)','√(4+5)','√(2+√4)','√(2^3)','1/2/3','1 / 2 / 3','2^3/4','1/2^3','√4^2','√1/2','2^(3+1'])plain(input);
+  for(const input of ['1/(-3)','1/(2/3)','1/(2^3)','(-3)/4','2^(3+1)','2^3^4','(2^3)^2','(2^3)²','2 ^ (3+1)','2^(3^4)','2^((3+1))','√(a)','√(4+5)','√(2+√4)','√(2^3)','1/2/3','1 / 2 / 3','2^3/4','1/2^3','√4^2','√1/2','2^(3+1'])plain(input);
 });
 
 test('decimals, longer identifiers and partial numeric fragments are not rewritten',()=>{

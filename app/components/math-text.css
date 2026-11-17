@@ -5,6 +5,11 @@
 .math-denominator{display:block;padding:.1em .13em 0}
 .math-power{display:inline;line-height:inherit}
 .math-power sup{font-size:max(.65em,var(--arp-font-min,0px));line-height:0;vertical-align:super;margin-inline-start:.025em}
+.math-power.math-power-fraction{display:inline-flex;align-items:flex-start;vertical-align:middle;line-height:1;margin-inline:.025em}
+.math-powered-expression{display:inline-flex;align-items:center}
+.math-powered-expression>.math-fraction{font-size:inherit;margin-inline:.025em}
+.math-base-parenthesis{font-size:1.9em;line-height:1;font-weight:400}
+.math-power-fraction>sup{line-height:1;vertical-align:baseline;position:relative;top:-.18em;margin-inline-start:.04em}
 .math-root{display:inline-flex;align-items:stretch;vertical-align:middle;line-height:1.1;margin-inline:.06em}
 .math-root-symbol{font-size:1.22em;line-height:1;align-self:center}
 .math-radicand{border-top:.065em solid currentColor;padding:.04em .08em 0 .03em;margin-top:.03em}

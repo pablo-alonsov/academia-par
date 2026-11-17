@@ -28,12 +28,13 @@ test('open responses, mathematical procedures and a later review do not imply sy
   assert.match(activity('a-fracciones-revisar-suma').checkMethod,/Revisión docente/);
 });
 test('every planned activity and resource has an explicit reviewed mode and keeps its stable id',()=>{
-  assert.equal(initialData.activities.length,119);
+  const previousBank=initialData.activities.filter(item=>!/^(rl|rm|am|af)-\d{2}$/.test(item.id));
+  assert.equal(previousBank.length,119);
   assert.equal(initialData.resources.length,21);
-  assert.equal(new Set(initialData.activities.map(item=>item.id)).size,119);
+  assert.equal(new Set(initialData.activities.map(item=>item.id)).size,initialData.activities.length);
   for(const item of [...initialData.activities,...initialData.resources])assert.ok(['independent','teacher'].includes(item.supportMode),item.id);
-  assert.equal(initialData.activities.filter(item=>item.supportMode==='teacher').length,19);
-  assert.equal(initialData.activities.filter(item=>item.supportMode==='independent').length,100);
+  assert.equal(previousBank.filter(item=>item.supportMode==='teacher').length,19);
+  assert.equal(previousBank.filter(item=>item.supportMode==='independent').length,100);
 });
 test('each external activity keeps the resource support without changing its consigna',()=>{
   for(const resource of initialData.resources){

@@ -1,13 +1,16 @@
 /** Material planificado. No representa clases impartidas ni aprendizaje comprobado. */
 import {rocioCurriculum} from "./curriculum-rocio";
 import {alejandraCurriculum} from "./curriculum-alejandra";
+import {rocioPdfActivities} from './pdf-practice-rocio';
+import {alejandraPdfActivities} from './pdf-practice-alejandra';
+import {learningStudentView} from './learning-content';
 import type {ActivitySupportMode} from "./activity-support";
 export type StudentId = "rocio" | "alejandra";
 export type ActivityType = "choice" | "numeric" | "fraction" | "text" | "open" | "paper" | "external";
-export interface SeedStudent { id: StudentId; name: string; level: string; color: string; avatar: string; priorities: string[]; nextStep: string; curriculumFocus?: string[]; subjectPlan?: {subject:string;topics:string;scope?:string;term?:string}[]; secondTermSubjects?: string[]; }
+export interface SeedStudent { id: StudentId; name: string; level: string; color: string; avatar: string; priorities: string[]; nextStep: string; curriculumFocus?: string[]; subjectPlan?: {subject:string;topics:string;scope?:string;term?:string}[]; secondTermSubjects?: string[]; mainActivityId?: string; alternativeActivityId?: string; }
 export interface SeedSubject { id: string; name: string; color: string; }
 export interface SeedSkill { id: string; studentId: StudentId; subject: string; title: string; state: string; reviewNeeded: boolean; lastCheck: null; observation: string; evidence: string; nextStep: string; explanation?: string; phase?: string; }
-export interface SeedActivity { id: string; title: string; objective: string; subject: string; skillId: string; level: string; duration: number; instructions: string; materials: string; checkMethod: string; check: string; type: ActivityType; supportMode: ActivitySupportMode; autoCheck?: boolean; answer?: string; options?: string[]; hints: string[]; suggestedStudentIds: StudentId[]; status: "Disponible"; resourceId?: string; url?: string; }
+export interface SeedActivity { id: string; title: string; objective: string; subject: string; skillId: string; level: string; duration: number; instructions: string; materials: string; checkMethod: string; check: string; type: ActivityType; supportMode: ActivitySupportMode; autoCheck?: boolean; answer?: string; options?: string[]; hints: string[]; suggestedStudentIds: StudentId[]; status: "Disponible"; resourceId?: string; url?: string; practiceRetired?: boolean; }
 export interface SeedResource { id: string; title: string; url: string; objective: string; duration: number; instructions: string; description: string; subject: string; skillId: string; type: string; supportMode: ActivitySupportMode; level: string; suggestedStudentIds: StudentId[]; checkedAt: string; accessStatus: string; accessNote: string; }
 
 const skill = (id: string, studentId: StudentId, subject: string, title: string, nextStep: string, explanation?: string): SeedSkill => ({ id, studentId, subject, title, state: "Por empezar", reviewNeeded: false, lastCheck: null, observation: "", evidence: "", nextStep, ...(explanation ? { explanation } : {}) });
@@ -125,3 +128,18 @@ for (const resource of initialData.resources) {
   if(initialData.activities.some(item=>item.id===`act-${resource.id}`))continue;
   initialData.activities.push(activity({ id: `act-${resource.id}`, supportMode: resource.supportMode, title: resource.title, objective: resource.objective, subject: resource.subject, skillId: resource.skillId, level: resource.level, duration: resource.duration, instructions: resource.instructions, materials: `Recurso externo: ${resource.url}. ${resource.accessNote}`, checkMethod: "Entrega y revisión docente de la respuesta. Abrir el enlace o marcarlo como utilizado no registra aciertos externos ni cambia el estado de una habilidad.", type: "external", hints: ["Lee la consigna antes de abrir el enlace y decide qué vas a observar.", "Al volver, explica lo que hiciste y lo que necesitas preguntar."], suggestedStudentIds: resource.suggestedStudentIds, resourceId: resource.id, url: resource.url }));
 }
+
+// El catálogo actual sigue las cuatro fichas de referencia. Los IDs anteriores
+// permanecen para poder consultar clases y respuestas sin reescribir el historial.
+const complementaryCodes:Record<string,number>={ri:0,al:0};
+initialData.activities=initialData.activities.map(item=>{
+ const prefix=item.type!=='external'&&(item.subject==='Inglés'&&item.suggestedStudentIds.includes('rocio')?'ri':item.subject==='Lengua'&&item.suggestedStudentIds.includes('alejandra')?'al':'');
+ if(prefix){const number=++complementaryCodes[prefix];return {...item,title:`${prefix.toUpperCase()}-${String(number).padStart(2,'0')} · ${prefix==='ri'?'Inglés':'Sintaxis'} ${number}`,practiceRetired:false};}
+ return {...item,practiceRetired:true};
+});
+initialData.activities.push(...rocioPdfActivities.map(item=>({...item,practiceRetired:false})),...alejandraPdfActivities.map(item=>({...item,practiceRetired:false})));
+initialData.students=initialData.students.map(student=>({...learningStudentView(student),mainActivityId:student.id==='rocio'?'rl-01':'am-01'}));
+initialData.skills=mergePlanned(initialData.skills,[
+ skill('a-proporcionalidad','alejandra','Matemáticas','Distinguir proporcionalidad directa e inversa','Reconocer la relación entre magnitudes y comprobar su constante antes de calcular.','En una proporcionalidad directa se mantiene el cociente entre las magnitudes; en una inversa, su producto. Las situaciones de máquinas o comida requieren suponer el mismo ritmo y reparto del trabajo o consumo.'),
+ skill('a-presion','alejandra','Física y química','Relacionar fuerza, superficie y presión','Escribir los datos y sus unidades y aplicar p = F/S.','La presión se calcula como p = F/S. Si F está en N y S en m², p se expresa en Pa. A igual fuerza, reducir la superficie aumenta la presión; para hallar la superficie, S = F/p.'),
+]);

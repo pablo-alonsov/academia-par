@@ -1,13 +1,15 @@
 export type MathTextToken =
   | {type: "text"; text: string}
   | {type: "fraction"; numerator: string; denominator: string; spoken: string}
-  | {type: "power"; base: string; exponent: string; spoken: string}
+  | {type: "power"; base: string; exponent: string; spoken: string; fractionBase?: {numerator: string; denominator: string}}
   | {type: "root"; radicand: string; spoken: string};
 
 type Range = {start: number; end: number};
 const SIGN = "[+\\-−]?";
 const INTEGER = `${SIGN}\\d+`;
-const BASE = `(?:\\(${INTEGER}\\)|\\d+|[\\p{L}µμ]+)`;
+const SPACE = "[ \\t]*";
+const FRACTION_BASE = `\\(${SPACE}${INTEGER}${SPACE}/${SPACE}${INTEGER}${SPACE}\\)`;
+const BASE = `(?:${FRACTION_BASE}|\\(${INTEGER}\\)|\\d+|[\\p{L}µμ]+)`;
 const EXPONENT = `(?:\\(${INTEGER}\\)|${INTEGER}|□)`;
 const FRACTION_PART = `(?:${INTEGER}|□)`;
 const SUPER_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
@@ -16,13 +18,16 @@ const SUPER_VALUES: Record<string,string> = {"⁰":"0","¹":"1","²":"2","³":"3
 const UNITS = new Set(["m","cm","mm","dm","km","nm","µm","μm","g","kg","mg","cg","dg","l","ml","dl","cl","s","min","h","a","k","mol","cd","hz","pa","n","j","w","v","c","ω"]);
 const WORD = /[\p{L}\p{N}_]/u;
 const SUPER = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]/u;
-const SPACE = "[ \\t]*";
 
 function unparenthesize(value: string): string {
   return value.startsWith("(") && value.endsWith(")") ? value.slice(1, -1) : value;
 }
 function integer(value: string, maxDigits = 12): boolean {
   return new RegExp(`^[+\\-−]?\\d{1,${maxDigits}}$`).test(value);
+}
+function fractionBase(value: string): {numerator: string; denominator: string} | undefined {
+  const match = value.match(/^\([ \t]*([+\-−]?\d{1,12})[ \t]*\/[ \t]*([+\-−]?\d{1,12})[ \t]*\)$/u);
+  return match ? {numerator: match[1], denominator: match[2]} : undefined;
 }
 function signedSpoken(value: string): string {
   const raw = unparenthesize(value);
@@ -65,7 +70,7 @@ function protectedRanges(text: string): Range[] {
     const close = closingParenthesis(text, open.index);
     if (close < 0 || integer(text.slice(open.index + 1, close))) continue;
     const outerPower = text.slice(close + 1).match(new RegExp(`^${SPACE}(?:\\^${SPACE}${EXPONENT}|${SUPER_NUMBER})`, "u"));
-    if (outerPower) ranges.push({start: open.index, end: close + 1 + outerPower[0].length});
+    if (outerPower && !fractionBase(text.slice(open.index, close + 1))) ranges.push({start: open.index, end: close + 1 + outerPower[0].length});
   }
   return ranges;
 }
@@ -109,10 +114,11 @@ export function tokenizeMathText(text: string): MathTextToken[] {
       const parts = match.groups.power ? match[0].split("^").map(part => part.trim()) : match[0].match(new RegExp(`^(${BASE})(${SUPER_NUMBER})$`, "u"))?.slice(1);
       if (!parts) continue;
       const base = parts[0], exponent = match.groups.super ? [...parts[1]].map(char => SUPER_VALUES[char]).join("") : unparenthesize(parts[1]);
-      const rawBase = unparenthesize(base), numberBase = integer(rawBase), letterBase = /^[\p{L}µμ]+$/u.test(base);
+      const rawBase = unparenthesize(base), numberBase = integer(rawBase), rationalBase = fractionBase(base), letterBase = /^[\p{L}µμ]+$/u.test(base);
       const unit = UNITS.has(base.toLowerCase());
       unitPower = letterBase && (base.length === 1 || unit);
-      if ((numberBase || (unitPower && (!unit || !/^[-−]/.test(exponent)))) && (integer(exponent, 6) || exponent === "□")) token = {type:"power", base, exponent, spoken:`${signedSpoken(base)}${base.startsWith("(") ? " entre paréntesis" : ""} elevado ${exponent === "□" ? "al exponente que falta" : `a ${signedSpoken(exponent)}`}`};
+      const spokenBase = rationalBase ? `${signedSpoken(rationalBase.numerator)} dividido entre ${signedSpoken(rationalBase.denominator)} entre paréntesis` : `${signedSpoken(base)}${base.startsWith("(") ? " entre paréntesis" : ""}`;
+      if ((numberBase || rationalBase || (unitPower && (!unit || !/^[-−]/.test(exponent)))) && (integer(exponent, 6) || exponent === "□")) token = {type:"power", base, exponent, spoken:`${spokenBase} elevado ${exponent === "□" ? "al exponente que falta" : `a ${signedSpoken(exponent)}`}`, ...(rationalBase ? {fractionBase: rationalBase} : {})};
     } else if (match.groups?.root) {
       const radicand = unparenthesize(match[0].slice(1).trim());
       if (integer(radicand)) token = {type:"root", radicand, spoken:`raíz cuadrada de ${signedSpoken(radicand)}`};

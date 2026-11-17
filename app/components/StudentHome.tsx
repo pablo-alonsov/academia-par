@@ -15,8 +15,8 @@ function WorkMeta({ work }: { work: HomeWork }) {
   return <div className="ss-work-meta">{item.subject && <span>{item.subject}</span>}</div>;
 }
 
-export default function StudentHome({ student, activities, resources, assignments, responses, skills, draftOptions, attemptedIds, sessions, latestCheck, exams, feedback, onOpenWork, onOpenSession, onFeedback, onNavigate }: any) {
-  const { primary, alternative, otherDrafts } = selectHomeWork({ student, activities, assignments, responses, skills, draftOptions, attemptedIds });
+export default function StudentHome({ student, activities, practiceActivities=activities, resources, assignments, responses, skills, draftOptions, attemptedIds, sessions, latestCheck, exams, feedback, onOpenWork, onOpenSession, onFeedback, onNavigate }: any) {
+  const { primary, alternative, otherDrafts } = selectHomeWork({ student, activities:practiceActivities, assignments, responses, skills, draftOptions, attemptedIds });
   const latestSession = sessions[0], nextExam = exams[0];
   const featuredFeedback = feedback.find((item: Item) => isUnread(student.id, item)) || feedback[0];
   const newFeedback = featuredFeedback && isUnread(student.id, featuredFeedback);
