@@ -132,6 +132,101 @@ async function controlledClock(run){
   try{return await run({now:()=>now,set:value=>{now=value;}});}finally{globalThis.Date=RealDate;}
 }
 
+function browserCookieJar(response,current=''){
+  const values=new Map(current.split(';').map(entry=>entry.trim()).filter(Boolean).map(entry=>{const split=entry.indexOf('=');return [entry.slice(0,split),entry.slice(split+1)];}));
+  for(const entry of response.headers.getSetCookie()){
+    const pair=entry.split(';')[0],split=pair.indexOf('='),name=pair.slice(0,split),value=pair.slice(split+1);
+    if(value)values.set(name,value);else values.delete(name);
+  }
+  return [...values].map(([name,value])=>`${name}=${value}`).join('; ');
+}
+function cookieValue(jar,name){return jar.split(';').map(entry=>entry.trim()).find(entry=>entry.startsWith(name+'='))?.slice(name.length+1);}
+async function resumeTeacher(cookie,extra={}){return auth.POST(request('/api/auth',{cookie,body:{profile:'teacher',resume:true,...extra}}));}
+
+test('a remembered teacher PIN survives profile selection, pupil use and re-entry without granting pupil permissions',async()=>controlledClock(async clock=>{
+  const start=clock.now(),deadline=start+86400000,entered=await login('teacher',pin),initial=await entered.response.json();
+  assert.equal(initial.expiresAt,deadline);
+  const cookies=entered.response.headers.getSetCookie();assert.equal(cookies.length,2);
+  for(const value of cookies)assert.match(value,/Path=\/; HttpOnly; SameSite=Strict; Max-Age=86400; Secure/);
+  let jar=browserCookieJar(entered.response);const remembered=cookieValue(jar,'arp_teacher_remember');
+  assert.match(remembered,/^[a-f0-9]{64}$/);assert.notEqual(remembered,cookieValue(jar,'arp_access'));
+  const selection=await auth.DELETE(request('/api/auth',{cookie:jar}));jar=browserCookieJar(selection,jar);
+  assert.equal(cookieValue(jar,'arp_access'),undefined);assert.equal(cookieValue(jar,'arp_teacher_remember'),remembered);
+  assert.equal((await data.GET(request('/api/data',{cookie:jar}))).status,401);
+  assert.deepEqual(await (await auth.GET(request('/api/auth',{cookie:jar}))).json(),{profile:null,expiresAt:null,serverNow:start});
+  clock.set(start+3600000);
+  const pupil=await auth.POST(request('/api/auth',{cookie:jar,body:{profile:'alejandra'}}));jar=browserCookieJar(pupil,jar);
+  assert.equal(pupil.status,200);assert.equal(cookieValue(jar,'arp_teacher_remember'),remembered);
+  const pupilData=await (await data.GET(request('/api/data',{cookie:jar,expectedProfile:'alejandra'}))).json();assert.deepEqual(pupilData.students.map(student=>student.id),['alejandra']);
+  assert.equal((await action.POST(request('/api/action',{cookie:jar,body:{action:'upsertSession',data:{id:'remember-unauthorized',studentId:'alejandra',date:'2026-11-16',duration:60,status:'preparada'}}}))).status,403);
+  jar=browserCookieJar(await auth.DELETE(request('/api/auth',{cookie:jar})),jar);
+  const resumed=await resumeTeacher(jar);assert.equal(resumed.status,200);assert.deepEqual(await resumed.json(),{profile:'teacher',expiresAt:deadline,serverNow:clock.now()});
+  assert.equal(resumed.headers.getSetCookie().length,1);jar=browserCookieJar(resumed,jar);
+  assert.equal(cookieValue(jar,'arp_teacher_remember'),remembered);
+  assert.equal((await data.GET(request('/api/data',{cookie:jar,expectedProfile:'teacher'}))).status,200);
+  assert.equal((await data.GET(request('/api/data',{cookie:jar,expectedProfile:'alejandra'}))).status,409);
+  assert.equal((await data.GET(request('/api/data',{cookie:entered.cookie}))).status,401);
+}));
+
+test('teacher re-entry keeps the original PIN deadline and requires it again at exactly 24 hours',async()=>controlledClock(async clock=>{
+  const start=clock.now(),deadline=start+86400000,entered=await login('teacher',pin);let jar=browserCookieJar(entered.response);
+  jar=browserCookieJar(await auth.DELETE(request('/api/auth',{cookie:jar})),jar);const remembered=cookieValue(jar,'arp_teacher_remember');
+  for(const now of [start+3600000,deadline-60000,deadline-1]){
+    clock.set(now);
+    const resumed=await resumeTeacher(jar,{expiresAt:deadline+86400000,issuedAt:now});assert.equal(resumed.status,200);
+    assert.deepEqual(await resumed.json(),{profile:'teacher',expiresAt:deadline,serverNow:now});
+    assert.match(resumed.headers.getSetCookie()[0],new RegExp(`Max-Age=${Math.ceil((deadline-now)/1000)}(?:;|$)`));jar=browserCookieJar(resumed,jar);
+    const read=await auth.GET(request('/api/auth',{cookie:jar}));assert.equal(read.headers.get('set-cookie'),null);assert.equal((await read.json()).expiresAt,deadline);
+    assert.equal(cookieValue(jar,'arp_teacher_remember'),remembered);
+    jar=browserCookieJar(await auth.DELETE(request('/api/auth',{cookie:jar})),jar);
+  }
+  clock.set(deadline);
+  const expired=await resumeTeacher(jar);assert.equal(expired.status,401);assert.equal((await expired.json()).code,'TEACHER_PIN_REQUIRED');assert.equal(expired.headers.get('set-cookie'),null);
+  assert.equal((await data.GET(request('/api/data',{cookie:jar}))).status,401);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM login_attempts').get().n,0);
+  const fresh=await auth.POST(request('/api/auth',{cookie:jar,body:{profile:'teacher',pin}}));assert.equal(fresh.status,200);assert.equal((await fresh.json()).expiresAt,deadline+86400000);
+  const newJar=browserCookieJar(fresh,jar);assert.notEqual(cookieValue(newJar,'arp_teacher_remember'),remembered);
+  const old=await resumeTeacher(`arp_teacher_remember=${remembered}`);assert.equal(old.status,401);assert.equal((await old.json()).code,'TEACHER_PIN_REQUIRED');
+}));
+
+test('teacher reminders reject forged, swapped or pupil tokens and preserve same-origin guards',async()=>{
+  const entered=await login('teacher',pin),jar=browserCookieJar(entered.response),remembered=cookieValue(jar,'arp_teacher_remember'),active=cookieValue(jar,'arp_access');
+  const pupil=await login('rocio'),pupilToken=cookieValue(pupil.cookie,'arp_access');
+  const forged=remembered.slice(0,-1)+(remembered.endsWith('a')?'b':'a');
+  for(const token of [forged,active,pupilToken,'invalid']){
+    const response=await resumeTeacher(`arp_teacher_remember=${token}`);assert.equal(response.status,401);assert.equal((await response.json()).code,'TEACHER_PIN_REQUIRED');
+  }
+  assert.equal((await data.GET(request('/api/data',{cookie:`arp_access=${remembered}`}))).status,401);
+  assert.equal((await resumeTeacher(pupil.cookie)).status,401);
+  assert.equal((await auth.POST(request('/api/auth',{cookie:jar,siteOrigin:'https://another.example',body:{profile:'teacher',resume:true}}))).status,403);
+  assert.equal((await auth.DELETE(new Request(origin+'/api/auth',{method:'DELETE',headers:{cookie:jar,Origin:'https://another.example'}}))).status,403);
+  assert.equal((await auth.POST(new Request(origin+'/api/auth',{method:'POST',headers:{cookie:jar,'Content-Type':'application/json','Sec-Fetch-Site':'cross-site'},body:JSON.stringify({profile:'teacher',resume:true})}))).status,403);
+  assert.equal((await resumeTeacher(jar)).status,200);
+});
+
+test('missing teacher reminders do not spend PIN attempts, while actual PIN verification remains rate limited',async()=>{
+  for(let i=0;i<12;i++){const response=await resumeTeacher();assert.equal(response.status,401);assert.equal((await response.json()).code,'TEACHER_PIN_REQUIRED');}
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM login_attempts').get().n,0);
+  const entered=await login('teacher',pin),jar=browserCookieJar(entered.response);
+  for(let i=0;i<8;i++)assert.equal((await auth.POST(request('/api/auth',{cookie:jar,body:{profile:'teacher',pin:'wrong'}}))).status,401);
+  assert.equal((await auth.POST(request('/api/auth',{cookie:jar,body:{profile:'teacher',pin}}))).status,429);
+  assert.equal((await resumeTeacher(jar)).status,200);
+});
+
+test('switching an existing teacher session preserves its stored deadline when adopting remembered PIN access',async()=>controlledClock(async clock=>{
+  const base=clock.now(),legacyDeadline=base+12*3600000;
+  for(const transition of ['selector','pupil']){
+    const entered=await login('teacher',pin),hash=await digest(cookieValue(entered.cookie,'arp_access'));
+    sqlite.prepare('UPDATE app_sessions SET expires_at=? WHERE token_hash=?').run(legacyDeadline,hash);
+    clock.set(base+3600000);
+    const switched=transition==='selector'?await auth.DELETE(request('/api/auth',{cookie:entered.cookie})):await auth.POST(request('/api/auth',{cookie:entered.cookie,body:{profile:'rocio'}}));
+    assert.equal(switched.status,200);assert.equal(switched.headers.getSetCookie().length,2);
+    assert.match(switched.headers.getSetCookie().find(value=>value.startsWith('arp_teacher_remember=')),/Max-Age=39600(?:;|$)/);
+    const jar=browserCookieJar(switched,entered.cookie),resumed=await resumeTeacher(jar);assert.equal(resumed.status,200);assert.equal((await resumed.json()).expiresAt,legacyDeadline);
+    clock.set(base);
+  }
+}));
+
 test('all profiles receive an absolute 24-hour deadline and reads never renew either cookie or server expiry',async()=>controlledClock(async clock=>{
   const ttl=24*60*60*1000,base=clock.now();
   for(const profile of ['rocio','alejandra','teacher']){

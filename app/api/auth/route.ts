@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { cleanString, cookie, createSession, currentSession, database, deleteSession, digest, fail, HttpError, json, PROFILES, readBody, sameOrigin, verifyPin, type Profile } from "@/lib/server-auth";
+import { cleanString, cookie, createSession, currentSession, database, deleteSession, digest, fail, HttpError, json, PROFILES, readBody, sameOrigin, verifyPin, rememberedTeacherSession, rememberTeacher, teacherRememberCookie, SESSION_MAX_AGE_SECONDS, type Profile } from "@/lib/server-auth";
 import { seed } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +7,14 @@ export async function GET(request:Request) { try { const session=await currentSe
 export async function POST(request:Request) {
   try {
     sameOrigin(request);
-    const {profile,pin}=await readBody(request);
+    const {profile,pin,resume}=await readBody(request);
     if(!PROFILES.includes(profile)) throw new HttpError(400,"Selecciona un perfil válido.");
-    if(profile==="teacher") {
+    const remembered=await rememberedTeacherSession(request);
+    let teacherDeadline:number|undefined;
+    if(profile==="teacher"&&resume===true){
+      if(!remembered)throw new HttpError(401,"Introduce tu contraseña para entrar en el panel docente.","TEACHER_PIN_REQUIRED");
+      teacherDeadline=remembered.expiresAt;
+    }else if(profile==="teacher") {
       const attemptKey=await digest(`${request.headers.get("cf-connecting-ip") || "unknown"}:teacher`);
       const now=Date.now();
       // Atomic counter prevents concurrent requests bypassing the attempt window.
@@ -20,13 +25,28 @@ export async function POST(request:Request) {
       if(!stored) throw new HttpError(503,"Falta configurar la clave docente en el servidor.");
       if(!await verifyPin(cleanString(pin,100),stored)) throw new HttpError(401,"La contraseña no es correcta.");
       await database().prepare("DELETE FROM login_attempts WHERE key=?").bind(attemptKey).run();
+      teacherDeadline=Date.now()+SESSION_MAX_AGE_SECONDS*1000;
     }
     await seed();
+    const previous=await currentSession(request);
+    // Preserve an already open teacher session when this version is first
+    // adopted, using its original deadline rather than granting another day.
+    const reminder=profile==="teacher"&&resume!==true?await rememberTeacher(request,teacherDeadline!):!remembered&&previous?.profile==="teacher"?await rememberTeacher(request,previous.expiresAt):null;
     await deleteSession(request);
-    const {token,expiresAt}=await createSession(request,profile as Profile);
-    return json({profile,expiresAt,serverNow:Date.now()},200,{"Set-Cookie":cookie(request,token)});
+    const {token,expiresAt}=await createSession(request,profile as Profile,teacherDeadline);
+    const headers=new Headers();headers.append("Set-Cookie",cookie(request,token,Math.max(0,Math.ceil((expiresAt-Date.now())/1000))));
+    if(reminder)headers.append("Set-Cookie",teacherRememberCookie(request,reminder.token,reminder.expiresAt));
+    return json({profile,expiresAt,serverNow:Date.now()},200,headers);
   } catch(error) {return fail(error);}
 }
 export async function DELETE(request:Request) {
-  try {sameOrigin(request);await deleteSession(request);return json({profile:null,expiresAt:null},200,{"Set-Cookie":cookie(request,"",0)});} catch(error){return fail(error);}
+  try {
+    sameOrigin(request);
+    const previous=await currentSession(request),remembered=await rememberedTeacherSession(request);
+    const reminder=previous?.profile==="teacher"&&!remembered?await rememberTeacher(request,previous.expiresAt):null;
+    await deleteSession(request);
+    const headers=new Headers();headers.append("Set-Cookie",cookie(request,"",0));
+    if(reminder)headers.append("Set-Cookie",teacherRememberCookie(request,reminder.token,reminder.expiresAt));
+    return json({profile:null,expiresAt:null},200,headers);
+  } catch(error){return fail(error);}
 }
