@@ -1,12 +1,12 @@
 # Academia PAR
 
-Academia para las clases individuales de Rocío (6.º Primaria) y Alejandra (2.º ESO). React 19, TypeScript y rutas de servidor compatibles con Next.js mediante Vinext; Tailwind/CSS con temas accesibles. Cloudflare D1 conserva los registros y R2 los archivos. Sites aloja la aplicación con acceso directo por enlace.
+Academia para las clases individuales de dos alumnas. React 19, TypeScript y rutas de servidor compatibles con Next.js mediante Vinext; Tailwind/CSS con temas accesibles. Cloudflare D1 conserva los registros y R2 los archivos. Sites aloja la aplicación con acceso directo por enlace.
 
 ## Acceso
 
-Enlace publicado: https://academia-par.movingflair1.chatgpt.site. El enlace anterior redirige al actual. Se conserva el mismo proyecto con sus datos D1 y archivos R2; las sesiones y preferencias locales pertenecen a cada origen, así que hay que volver a elegir perfil al usar la dirección nueva. Las copias de trabajo que solo existan sin sincronizar en el almacenamiento del enlace anterior no se trasladan automáticamente.
+Enlace publicado: https://academia-par.movingflair1.chatgpt.site. Se conserva el mismo proyecto con sus datos D1 y archivos R2; las sesiones y preferencias locales pertenecen a cada origen, así que hay que volver a elegir perfil al usar la dirección nueva. Las copias de trabajo que solo existan sin sincronizar en el almacenamiento del enlace anterior no se trasladan automáticamente.
 
-Las alumnas abren el enlace y eligen su perfil sin contraseña y sin iniciar sesión en ChatGPT, por petición expresa. El servidor limita cada sesión a los datos del perfil elegido, pero cualquier persona con el enlace puede elegir o cambiar entre ambos perfiles: el selector no identifica personalmente a la alumna. El panel docente requiere su contraseña; el servidor guarda solamente su hash, aplica límites a intentos y usa una cookie HttpOnly.
+Las alumnas abren el enlace y eligen su perfil sin contraseña. El servidor limita cada sesión a los datos del perfil elegido, pero cualquier persona con el enlace puede elegir o cambiar entre ambos perfiles: el selector no identifica personalmente a la alumna. El panel docente requiere su contraseña; el servidor guarda solamente su hash, aplica límites a intentos y usa una cookie HttpOnly.
 
 Las nuevas entradas duran 24 horas desde la selección del perfil. El plazo es absoluto: recargar, practicar o volver a la pestaña no lo renueva. Al caducar, la aplicación vuelve al selector y exige elegir de nuevo; el panel docente conserva su contraseña. Los borradores se mantienen en su perfil y dispositivo. Las sesiones emitidas antes del cambio conservan su fecha de caducidad original hasta la siguiente entrada.
 
