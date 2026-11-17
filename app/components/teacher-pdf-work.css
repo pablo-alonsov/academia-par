@@ -1,0 +1,11 @@
+.teacher-pdf-work{border-top:1px solid var(--line);padding-top:12px;margin-top:12px;min-width:0}
+.teacher-pdf-work-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;min-width:0}
+.teacher-pdf-work-row>.badge{display:inline-flex;align-items:center;gap:5px;white-space:normal;line-height:1.6;font-size:max(var(--arp-font-min,0px),calc(12px * var(--arp-font-scale,1)))}
+.teacher-pdf-work-row>.btn{min-height:44px;min-width:44px;white-space:normal;font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)))}
+.teacher-pdf-work-error{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface2);color:var(--text)}
+.teacher-pdf-work-error>svg{flex-shrink:0;color:var(--muted);margin-top:3px}
+.teacher-pdf-work-error>p{flex:1;min-width:120px;margin:0;line-height:1.6;font-size:max(var(--arp-font-min,0px),calc(13px * var(--arp-font-scale,1)));overflow-wrap:anywhere}
+.teacher-pdf-work-error>.btn{min-height:44px;min-width:44px;white-space:normal}
+.teacher-pdf-work :is(button,a):focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+@media(max-width:600px){.teacher-pdf-work-row{align-items:flex-start}.teacher-pdf-work-row>.btn{margin-left:auto}.teacher-pdf-work-error>.btn{margin-left:26px}}
+@media(prefers-reduced-motion:no-preference){.teacher-pdf-work-spinner{animation:teacher-pdf-work-spin 1.2s linear infinite}@keyframes teacher-pdf-work-spin{to{transform:rotate(360deg)}}}

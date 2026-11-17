@@ -7,6 +7,7 @@ import { validAvatarFile } from "./server-avatar";
 import { ACTIVITY_SUPPORT_OPTIONS } from "./activity-support";
 import { commitStudentNotification } from "./server-notifications";
 import { assertNoSolutionReferences, patchFilesStatement, restorePdfSolution, setPdfSolutionsArchived } from "./server-pdf-solutions";
+import { setPdfWorked } from "./server-pdf-work";
 
 const STATES=["Por empezar","Lo estamos trabajando","Lo hago con ayuda","Lo hago sola","Lo he recordado días después"];
 const SESSION_STATES=["por preparar","preparada","en curso","realizada"];
@@ -348,5 +349,6 @@ export async function perform(profile:Profile,action:string,data:RecordData) {
   }
   if(action==="setSolutionsArchived")return setPdfSolutionsArchived(profile,data.resourceId,data.archived);
   if(action==="restorePdfSolution")return restorePdfSolution(profile,data.resourceId,data.fileId,data.operationId);
+  if(action==="setPdfWorked")return setPdfWorked(profile,data.resourceId,data.fileId,data.worked,data.expectedRevision);
   throw new HttpError(400,"Esta acción no está disponible.");
 }

@@ -953,3 +953,69 @@ test('PDFsolutions public file management cannot overwrite private group flags o
  try{await mutate(teacher.cookie,'manageFile',{id:target.file.id,shared:true,_solutionsArchived:false,_privateConcurrentMarker:'forged',purpose:'solution'});}finally{D1Statement.prototype.run=original;}
  const row=JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(target.file.id).data);assert.equal(injected,true);assert.equal(row._solutionsArchived,true);assert.equal(row._privateConcurrentMarker,'kept');assert.notEqual(row.purpose,'solution');assert.equal(row.shared,true);
 });
+
+const storedPdfWorkFile=id=>JSON.parse(sqlite.prepare('SELECT data FROM files WHERE id=?').get(id).data);
+const pdfWorkPayload=(target,worked,expectedRevision=null)=>({resourceId:target.resourceId,fileId:target.file.id,worked,expectedRevision});
+
+test('PDFwork accepts teacher marks only on a verified original PDF for its actual pupil',async()=>{
+ const {teacher,pupils,plan}=await pdfSolutionSetup(),target=plan.targets[0],payload=pdfWorkPayload(target,true);
+ await mutate(undefined,'setPdfWorked',payload,401);
+ for(const cookie of Object.values(pupils))await mutate(cookie,'setPdfWorked',payload,403);
+ for(const malformed of [{worked:'true'},{expectedRevision:undefined},{expectedRevision:'unknown'},{fileId:undefined}])await mutate(teacher.cookie,'setPdfWorked',{...payload,...malformed},400);
+ await mutate(teacher.cookie,'setPdfWorked',{...payload,fileId:plan.targets[1].file.id},409);
+ const image=await pdfSharingDependencies(teacher.cookie).uploadFile({studentId:'rocio',uploadId:crypto.randomUUID()},new File([png],'Foto.png',{type:'image/png'}));await mutate(teacher.cookie,'upsertResource',{id:'work-image-not-pdf',studentId:'rocio',fileId:image.id,title:'Foto de trabajo'});
+ await mutate(teacher.cookie,'setPdfWorked',{...payload,resourceId:'work-image-not-pdf',fileId:image.id},400);
+ for(const purpose of ['avatar','solution']){insertRecord('files',{id:'work-invalid-'+purpose,studentId:'rocio',type:'application/pdf',purpose});insertRecord('resources',{id:'work-resource-'+purpose,studentId:'rocio',title:'Recurso inválido',fileId:'work-invalid-'+purpose});await mutate(teacher.cookie,'setPdfWorked',{...payload,resourceId:'work-resource-'+purpose,fileId:'work-invalid-'+purpose},400);}
+ insertRecord('resources',{id:'work-foreign-owner',studentId:'alejandra',fileId:target.file.id,title:'Ámbito incorrecto'});await mutate(teacher.cookie,'setPdfWorked',{...payload,resourceId:'work-foreign-owner'},400);
+ insertRecord('resources',{id:'work-foreign-suggestion',suggestedStudentIds:['alejandra'],fileId:target.file.id,title:'Ámbito sugerido incorrecto'});await mutate(teacher.cookie,'setPdfWorked',{...payload,resourceId:'work-foreign-suggestion'},400);
+ assert.ok(!storedPdfWorkFile(target.file.id)._pdfWorkedAt);
+});
+
+test('PDFwork marking and undoing are durable private records with stable idempotent dates and no learning side effects',async()=>controlledClock(async clock=>{
+ const {teacher,bucket,plan}=await pdfSolutionSetup(['rocio']),target=plan.targets[0],before=pdfSharingDomain(),puts=bucket.puts;
+ const initial=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,false));assert.equal(initial.alreadySaved,true);assert.deepEqual(pdfSharingDomain(),before);
+ const marked=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true)),first=storedPdfWorkFile(target.file.id);assert.equal(marked.worked,true);assert.equal(marked.studentId,'rocio');assert.equal(marked.workedAt,new Date(clock.now()).toISOString());assert.equal(first._pdfWorkedAt,marked.workedAt);assert.equal(first._pdfWorkRevision,marked.revision);assert.ok(marked.patch.files.some(file=>file.id===target.file.id&&file._pdfWorkedAt===first._pdfWorkedAt));
+ const rows=pdfSharingDomain();clock.set(clock.now()+1000);const retry=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true));assert.equal(retry.alreadySaved,true);assert.equal(retry.workedAt,first._pdfWorkedAt);assert.equal(retry.revision,first._pdfWorkRevision);assert.deepEqual(pdfSharingDomain(),rows);
+ await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,false),409);assert.deepEqual(pdfSharingDomain(),rows);
+ const undone=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,false,first._pdfWorkRevision)),pending=storedPdfWorkFile(target.file.id);assert.equal(undone.worked,false);assert.equal(pending._pdfWorkedAt,null);assert.notEqual(pending._pdfWorkRevision,first._pdfWorkRevision);
+ const stable=pdfSharingDomain();await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true),409);await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,false,first._pdfWorkRevision));assert.deepEqual(pdfSharingDomain(),stable);
+ clock.set(clock.now()+1000);const again=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true,pending._pdfWorkRevision));assert.ok(again.workedAt>first._pdfWorkedAt);assert.notEqual(again.revision,pending._pdfWorkRevision);
+ const reload=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.equal(reload.files.find(file=>file.id===target.file.id)._pdfWorkedAt,again.workedAt);
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='files')assert.deepEqual(after[table],before[table],table);assert.equal(after.files.length,before.files.length);assert.equal(bucket.puts,puts);
+}));
+
+test('PDFwork keeps identical pupil copies and ordinary versus exam PDFs independent',async()=>{
+ const {teacher,plan}=await pdfSolutionSetup(),[rocio,alejandra]=plan.targets;
+ await mutate(teacher.cookie,'upsertResource',{id:alejandra.resourceId,collection:'exam-prep',examMode:'class'});
+ assert.equal(storedPdfWorkFile(rocio.file.id).contentHash,storedPdfWorkFile(alejandra.file.id).contentHash);
+ const before=pdfSharingDomain(),marked=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(rocio,true));assert.equal(marked.studentId,'rocio');assert.ok(storedPdfWorkFile(rocio.file.id)._pdfWorkedAt);assert.equal(storedPdfWorkFile(alejandra.file.id)._pdfWorkedAt,undefined);assert.equal(storedPdfWorkFile(alejandra.file.id)._pdfWorkRevision,undefined);
+ const exam=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(alejandra,true));assert.equal(exam.studentId,'alejandra');assert.notEqual(exam.revision,marked.revision);
+ await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(rocio,false,marked.revision));assert.ok(storedPdfWorkFile(alejandra.file.id)._pdfWorkedAt);
+ const after=pdfSharingDomain();for(const table of Object.keys(before))if(table!=='files')assert.deepEqual(after[table],before[table],table);
+});
+
+test('PDFwork metadata stays teacher-only in snapshots and patches while original pupil PDFs remain usable',async()=>{
+ const {teacher,pupils,plan}=await pdfSolutionSetup(),target=plan.targets[0];await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true));
+ for(const cookie of Object.values(pupils)){const own=await (await data.GET(request('/api/data',{cookie}))).json();assert.ok(!JSON.stringify(own).includes('_pdfWorkedAt'));assert.ok(!JSON.stringify(own).includes('_pdfWorkRevision'));}
+ const collected=await collectAction(async()=>trackChange('files',target.file.id));
+ for(const profile of ['rocio','alejandra']){const patch=await actionPatch(profile,collected.changes);assert.ok(!JSON.stringify(patch).includes('_pdfWorkedAt'));assert.ok(!JSON.stringify(patch).includes('_pdfWorkRevision'));}
+ const context={params:Promise.resolve({id:target.file.id})},file=await fileRoute.GET(request(`/api/files/${target.file.id}?view=inline`,{cookie:pupils.rocio}),context);assert.equal(file.status,200);assert.deepEqual(Buffer.from(await file.arrayBuffer()),pdf);
+ const management=await (await data.GET(request('/api/data',{cookie:teacher.cookie}))).json();assert.ok(management.files.find(file=>file.id===target.file.id)._pdfWorkedAt);
+});
+
+test('PDFwork partial writes preserve concurrent archive and visibility flags and file management preserves worked state',async()=>{
+ const {teacher,plan}=await pdfSolutionSetup(['rocio']),target=plan.targets[0],original=D1Statement.prototype.run;let injected=false;
+ D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE files')&&this.bindings.includes('$._pdfWorkedAt')){injected=true;sqlite.prepare("UPDATE files SET data=json_set(data,'$._solutionsArchived',json('true'),'$.shared',json('false'),'$._privateConcurrentMarker','kept') WHERE id=?").run(target.file.id);}return original.call(this);};
+ let marked;try{marked=await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true));}finally{D1Statement.prototype.run=original;}
+ const first=storedPdfWorkFile(target.file.id);assert.equal(injected,true);assert.equal(first._solutionsArchived,true);assert.equal(first.shared,false);assert.equal(first._privateConcurrentMarker,'kept');assert.equal(first._pdfWorkRevision,marked.revision);
+ await mutate(teacher.cookie,'manageFile',{id:target.file.id,shared:true,_pdfWorkedAt:null,_pdfWorkRevision:'forged'});const managed=storedPdfWorkFile(target.file.id);assert.equal(managed._pdfWorkedAt,first._pdfWorkedAt);assert.equal(managed._pdfWorkRevision,first._pdfWorkRevision);assert.equal(managed._solutionsArchived,true);assert.equal(managed.shared,true);
+});
+
+test('PDFwork concurrent acknowledgements converge and a changed original file rejects stale marks',async()=>{
+ const {teacher,plan}=await pdfSolutionSetup(),target=plan.targets[0],original=D1Statement.prototype.run;
+ const results=await Promise.all([mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true)),mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true))]);const saved=storedPdfWorkFile(target.file.id);assert.ok(saved._pdfWorkedAt);assert.ok(results.some(result=>result.alreadySaved));assert.ok(results.every(result=>result.revision===saved._pdfWorkRevision));
+ await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,false,saved._pdfWorkRevision));let injected=false;
+ D1Statement.prototype.run=async function(){if(!injected&&this.sql.startsWith('UPDATE files')&&this.bindings.includes('$._pdfWorkedAt')){injected=true;sqlite.prepare("UPDATE resources SET data=json_set(data,'$.fileId',?) WHERE id=?").run(plan.targets[1].file.id,target.resourceId);}return original.call(this);};
+ try{await mutate(teacher.cookie,'setPdfWorked',pdfWorkPayload(target,true,storedPdfWorkFile(target.file.id)._pdfWorkRevision),409);}finally{D1Statement.prototype.run=original;}
+ assert.equal(injected,true);assert.equal(storedPdfWorkFile(target.file.id)._pdfWorkedAt,null);assert.equal(storedPdfWorkFile(plan.targets[1].file.id)._pdfWorkedAt,undefined);
+});
