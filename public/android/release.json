@@ -1,0 +1,14 @@
+{
+  "name": "academia PAR",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "package": "es.academiapar.app",
+  "minimumAndroid": "8.0",
+  "minimumSdk": 26,
+  "targetSdk": 35,
+  "file": "academia-par.apk",
+  "bytes": 35460,
+  "sha256": "b21f28bfd55b5c999741d4b43302028038bd9878f3af86f6a6117cd7bf735cdb",
+  "signerSha256": "5c410833cdb86f515dd027d6cd5546c723ef3990d4f038f7c572b5fbc88a9aaf",
+  "requiresInternet": true
+}
