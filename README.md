@@ -16,12 +16,12 @@ La contraseña docente inicial solicitada está configurada como secreto de aloj
 
 ## Uso
 
-El menú de las alumnas es **Inicio · Mi camino · Practicar · Mis clases · Calendario**. Practicar reúne **Ejercicios** y **Recursos y materiales**; no hay una Biblioteca separada para las alumnas. El panel docente conserva **Biblioteca** para gestionar los recursos, junto a Hoy y esta semana, Alumnas, Banco de actividades y Calendario.
+El menú de las alumnas es **Inicio · Practicar · Mis clases · Calendario**. Practicar reúne **Ejercicios**, **Fichas y enlaces** y **Preparar exámenes**; no hay una Biblioteca separada para las alumnas. El panel docente conserva **Biblioteca** para gestionar los recursos, junto a Hoy y esta semana, Alumnas, Banco de actividades y Calendario.
 
 1. Entra en **Mi panel docente**. Abre **Alumnas** para ajustar las prioridades y el mapa de habilidades.
 2. En **Banco de actividades**, revisa el material planificado, adáptalo y asígnalo como actividad de clase, casa u opcional. En la ficha puedes destacar una actividad asignada en el inicio.
-3. **Preparar clase** crea una sesión con la fecha que elijas, sin inventar horas. La pantalla de sesión recupera el siguiente paso, guarda cambios, distingue notas privadas y material compartido y permite cambiar los tiempos.
-4. Al cerrar, revisa la vista previa para la alumna. Un único cierre guarda el diario y el siguiente paso. Solo una valoración explícita añade una comprobación al aprendizaje.
+3. **Registrar clase** abre un registro de 60 minutos con fecha, alumna y dos bloques: **Colegio y trabajo de clase** (privado) y **Lo que hemos hecho en la sesión**. Permite seleccionar archivos, materiales o actividades existentes.
+4. Los cambios se guardan automáticamente. En una clase nueva, **Guardar clase** comparte el resumen y los materiales con su alumna. Las notas del colegio siguen siendo privadas y el guardado no modifica el progreso por habilidades.
 5. Revisa las entregas desde la semana. Las fracciones se comparan por equivalencia exacta; las respuestas abiertas esperan revisión. Las pistas y autoevaluaciones se guardan por separado del resultado.
 6. En **Calendario**, cada alumna puede añadir, editar y eliminar sus propios exámenes y temas; el docente puede gestionar los de ambas. **Preparar repaso** crea una sesión vinculada al examen con una fecha elegida expresamente.
 

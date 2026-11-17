@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, FileText, Flag, NotebookPen, PencilLine, Search, Star } from "lucide-react";
-import StudyPlan from "./StudyPlan";
-import { PersonalizationPanel, StudentAvatar, studentColors, WordCollection } from "./StudentTools";
-import { StudentActivityDetail, StudentResourceDialog, studentDate, WorkFiles } from "./StudentWork";
+import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, FileText, NotebookPen, PencilLine, Search, Star } from "lucide-react";
+import { PersonalizationPanel, StudentAvatar, studentColors } from "./StudentTools";
+import { StudentActivityDetail, StudentResourceDialog, studentDate } from "./StudentWork";
 import { initializeReadState, isUnread, markRead } from "./StudentReadState";
 import { studentDrafts } from "./StudentDrafts";
 import { useStudentLocalForms } from "./StudentLocalForms";
@@ -24,11 +23,9 @@ import "./student-simple.css";
 type Item = Record<string, any>;
 type PracticeSection = "exercises" | "resources" | "exam-prep";
 type Props = { data: Item; profile: string; tab: string; act: (action: string, data: Item) => Promise<any>; notify: (message: string) => void; onNavigate?: (tab: string) => void | Promise<void>; onRefresh?: () => Promise<void>; personalizationRequested?: boolean; onPersonalizationOpened?: () => void };
-const STATES = ["Por empezar", "Lo estamos trabajando", "Lo hago con ayuda", "Lo hago sola", "Lo he recordado días después"];
 const plain = (value: any) => Array.isArray(value) ? value.join(" · ") : typeof value === "string" ? value : "";
 const searchText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim();
 const sortRecent = (a: Item, b: Item) => (b.createdAt || b.updatedAt || "").localeCompare(a.createdAt || a.updatedAt || "");
-const futureSkill = (skill: Item) => /segundo|más adelante|posterior/i.test(skill.phase || "");
 function Empty({ icon: Icon = BookOpen, title, children }: any) { return <div className="sv-empty"><span className="sv-empty-icon"><Icon size={25}/></span><h3>{title}</h3><p>{children}</p></div>; }
 function Subject({ value }: { value: string }) { return <span className={`sv-subject ${value?.includes("Lengua") ? "violet" : value?.includes("Física") ? "green" : "blue"}`}><BookOpen size={14}/>{value || "General"}</span>; }
 
@@ -75,14 +72,14 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   const [practiceSection, setPracticeSection] = useState<PracticeSection>("exercises");
   const [resourceSubject, setResourceSubject] = useState(""), [resourceSearch, setResourceSearch] = useState(""), [resourceLimit, setResourceLimit] = useState(5), [materialLimit, setMaterialLimit] = useState(5);
   const [practiceMode, setPracticeMode] = useState("Sin hacer"), [limit, setLimit] = useState(5);
-  const [pathMode, setPathMode] = useState("Ahora"), [pathLimit, setPathLimit] = useState(5), [resourceMode, setResourceMode] = useState("Todos"), [resourceType, setResourceType] = useState(""), [favoriteBusy, setFavoriteBusy] = useState(false), [sessionLimit, setSessionLimit] = useState(5);
+  const [resourceMode, setResourceMode] = useState("Todos"), [resourceType, setResourceType] = useState(""), [favoriteBusy, setFavoriteBusy] = useState(false), [sessionLimit, setSessionLimit] = useState(5);
   const [localVersion, setLocalVersion] = useState(0), [readVersion, setReadVersion] = useState(0);
   const [examSearch, setExamSearch] = useState(""), [examLimit, setExamLimit] = useState(6);
   useEffect(() => { setMaterialLimit(5); }, [resourceSubject, resourceSearch, resourceType, resourceMode]);
   const activityReturn = useRef({ top: 0, id: "", resourceId: "", sessionId: "", sourceAssignmentId: "", assignmentIndex: -1, listIndex:0, section: "exercises" as PracticeSection }), resourceReturn = useRef({ top: 0, id: "", section: "exercises" as PracticeSection }), sessionReturn = useRef({ top: 0, id: "" }), sessionHeading = useRef<HTMLHeadingElement>(null);
   const drafts: Item[] = useMemo(() => studentDrafts(profile, data.drafts || []), [profile, data.drafts, localVersion]);
   useEffect(() => { const refresh = () => setLocalVersion(value => value + 1), reviews = () => setReadVersion(value => value + 1); window.addEventListener("arp:drafts-changed", refresh); window.addEventListener("storage", refresh); window.addEventListener("arp-review-read-changed", reviews); initializeReadState(profile, data.responses || [], data.doubts || []); return () => { window.removeEventListener("arp:drafts-changed", refresh); window.removeEventListener("storage", refresh); window.removeEventListener("arp-review-read-changed", reviews); }; }, [profile]);
-  useEffect(() => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); setPathLimit(5); }, [tab, profile]);
+  useEffect(() => { setSubject(""); setSearch(""); setSkillFilter(""); setLimit(5); }, [tab, profile]);
   useEffect(() => { if (sessionId) sessionHeading.current?.focus({ preventScroll: true }); }, [sessionId]);
   const pendingWork = pendingTeacherAssignments(profile, assignments, activities, responses, student.mainActivityId);
   const pendingActivityIds = new Set(pendingWork.map(work => work.activity.id));
@@ -139,7 +136,6 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   }).sort((a, b) => (a.id === student.mainActivityId ? -1 : b.id === student.mainActivityId ? 1 : (practiceMode === "Hechos" ? sortRecent(latestFor(a.id) || {}, latestFor(b.id) || {}) : Number(Boolean(assignmentFor(b.id) && assignmentFor(b.id)?.category !== "Opcionales")) - Number(Boolean(assignmentFor(a.id) && assignmentFor(a.id)?.category !== "Opcionales")) || a.title.localeCompare(b.title, "es"))));
   const visibleActivities = matchingActivities.slice(0, limit), groupedActivities = new Map<string, Item[]>();
   visibleActivities.forEach(item => groupedActivities.set(item.subject, [...(groupedActivities.get(item.subject) || []), item]));
-  const matchingSkills = skills.filter(item => (!subject || item.subject === subject) && (pathMode === "Todo" || pathMode === "Ahora" && !futureSkill(item) || pathMode === "Conviene repasar" && item.reviewNeeded || pathMode === "Más adelante" && futureSkill(item)));
   const classResources = resources.filter(item => !isExamPreparation(item));
   const matchingResources = classResources.filter(item => (!resourceSubject || item.subject === resourceSubject) && (!resourceType || item.type === resourceType) && (resourceMode === "Todos" || resourceMode === "Favoritos" && favoriteIds.includes(item.id) || resourceMode === "Elegidos por el docente" && (item.pinned || pinnedIds.includes(item.id))) && (!searchText(resourceSearch) || searchText(`${item.title} ${item.objective}`).includes(searchText(resourceSearch)))).sort((a, b) => (a.id === returnResource ? -1 : b.id === returnResource ? 1 : 0) || Number(Boolean(b.pinned || pinnedIds.includes(b.id))) - Number(Boolean(a.pinned || pinnedIds.includes(a.id))) || Number(favoriteIds.includes(b.id)) - Number(favoriteIds.includes(a.id)) || a.title.localeCompare(b.title, "es"));
   const returnedResource = returnResource && !matchingResources.some(item => item.id === returnResource) ? classResources.find(item => item.id === returnResource) : undefined;
@@ -182,16 +178,6 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
         </div>
       </details>}
       <div className="ss-home-personalization"><PersonalizationPanel student={student} act={act} notify={notify} openRequested={personalizationRequested} onOpened={onPersonalizationOpened}/></div>
-    </>}
-    {tab === "Mi camino" && <>
-      <div className="sv-section-intro"><span className="sv-icon-box"><Flag size={23}/></span><div><h1>Mi camino</h1><p>Lo que estamos trabajando y lo que conviene repasar.</p></div></div>
-      {(student.priorities || []).length > 0 && <section className="card sv-pad"><h3>Prioridades actuales</h3><div className="sv-priorities">{student.priorities.map((priority: string, index: number) => <span key={index}><span className="sv-dot"/>{priority}</span>)}</div></section>}
-      <details className="sw-plan-collapse"><summary>Plan de trabajo por asignaturas</summary><StudyPlan plan={student.subjectPlan}/></details>
-      <div className="sv-chip-tabs" aria-label="Filtrar habilidades">{["Ahora", "Conviene repasar", "Más adelante", "Todo"].map(mode => <button key={mode} type="button" className={mode === pathMode ? "active" : ""} aria-pressed={mode === pathMode} onClick={() => { setPathMode(mode); setPathLimit(5); }}>{mode}</button>)}</div>
-      <label className="sv-select-label">Asignatura<select value={subject} onChange={event => { setSubject(event.target.value); setPathLimit(5); }}><option value="">Todas las asignaturas</option>{subjects.map(name => <option key={name}>{name}</option>)}</select></label>
-      <p className="muted sv-small">Completar una actividad no cambia automáticamente el estado de una habilidad.</p>
-      <div className="sv-skills">{matchingSkills.slice(0, pathLimit).map(skill => { const stateIndex = Math.max(0, STATES.indexOf(skill.state)); const evidence = (data.evidence || []).filter((item: Item) => item.skillId === skill.id); return <article className="card sv-skill" key={skill.id}><div className="sv-card-top"><Subject value={skill.subject}/>{skill.phase && <span className="badge">{skill.phase}</span>}{skill.reviewNeeded && <span className="badge amber">Conviene repasarlo</span>}</div><h3>{skill.title}</h3><div className="sv-skill-steps" aria-hidden="true">{[1, 2, 3, 4].map(step => <span key={step} className={step <= stateIndex ? "filled" : ""}/>)}</div><strong className={`sv-state-label sv-state-text-${stateIndex}`}>{skill.state || STATES[0]}</strong><p className="muted sv-small">{skill.lastCheck ? `Comprobación: ${studentDate(skill.lastCheck)}` : "Sin comprobación registrada"}</p>{skill.evidence && <blockquote className="sv-evidence">{plain(skill.evidence)}</blockquote>}{evidence.map((item: Item) => <div className="sv-evidence" key={item.id}><strong>{item.title || "Evidencia"}</strong><p className="sv-preline">{item.text || item.description}</p><WorkFiles ids={item.fileIds || (item.fileId ? [item.fileId] : [])}/></div>)}{skill.explanation && <details className="skill-reference"><summary>Explicación de referencia</summary><p className="sv-preline">{skill.explanation}</p></details>}<div className="sv-skill-next"><Flag size={15}/><span>{skill.state !== STATES[0] || skill.lastCheck ? skill.nextStep || "Sin siguiente paso registrado." : "Contenido planificado. El siguiente paso se concretará en clase."}{skill.reviewDate ? ` · Revisión: ${studentDate(skill.reviewDate)}` : ""}</span></div></article>; })}</div>{!matchingSkills.length && <Empty icon={Flag} title="Sin habilidades en esta vista">Selecciona otra asignatura o cambia el filtro.</Empty>}{matchingSkills.length > pathLimit && <button className="btn secondary" onClick={() => setPathLimit(value => value + 5)}>Mostrar cinco habilidades más</button>}
-      {profile === "rocio" && <WordCollection studentId={profile} entries={data.word_entries || []} act={act} notify={notify}/>}
     </>}
     {tab === "Practicar" && <>
       <div className="sv-section-intro"><span className="sv-icon-box"><PencilLine size={23}/></span><div><h1>Practicar</h1></div></div>

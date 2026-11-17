@@ -30,9 +30,9 @@ type Options = {
 };
 
 const KEY='__parHistory', STORAGE='par-platform-history-v1';
-const STUDENT_TABS=['Inicio','Mi camino','Practicar','Mis clases','Calendario'];
+const STUDENT_TABS=['Inicio','Practicar','Mis clases','Calendario'];
 const TEACHER_TABS=['Hoy y esta semana','Alumnas','Banco de actividades','Biblioteca','Calendario'];
-const SLUGS:Record<string,string>={'Inicio':'inicio','Mi camino':'camino','Practicar':'practicar','Mis clases':'clases','Calendario':'calendario','Hoy y esta semana':'hoy','Alumnas':'alumnas','Banco de actividades':'actividades','Biblioteca':'biblioteca'};
+const SLUGS:Record<string,string>={'Inicio':'inicio','Practicar':'practicar','Mis clases':'clases','Calendario':'calendario','Hoy y esta semana':'hoy','Alumnas':'alumnas','Banco de actividades':'actividades','Biblioteca':'biblioteca'};
 const DETAIL_SLUGS:Record<string,string>={'activity':'ejercicio','resource':'recurso','student-session':'clase','teacher-session':'sesion'};
 const id=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,159}$/.test(value);
 const integer=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;

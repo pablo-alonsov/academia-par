@@ -7,6 +7,6 @@ La interfaz de Academia PAR usa un tono sobrio, directo y adecuado tanto para Pr
 - Mostrar estados vacíos concretos: «Sin clases registradas», «Sin comprobaciones registradas».
 - Evitar diminutivos, estrellas o emojis como parte de los mensajes. Los iconos funcionales se conservan.
 - Mantener las consignas pedagógicas claras y el lenguaje cercano, sin infantilizar.
-- Conservar los nombres de navegación solicitados, incluido «Mi camino».
+- Mantener la navegación de las alumnas en «Inicio», «Practicar», «Mis clases» y «Calendario».
 
 Esta preferencia se aplica al selector, las vistas de alumnas, el panel docente, los formularios, los avisos y los metadatos.

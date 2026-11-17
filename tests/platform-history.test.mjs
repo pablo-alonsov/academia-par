@@ -51,6 +51,30 @@ test('routes round-trip IDs and assignment context without serializing answers o
   assert.deepEqual(normalizePlatformRoute({tab:'Biblioteca',detail:{kind:'teacher-session',id:'private-session'}},'rocio'),route('Inicio'));
 });
 
+test('retired learning path URLs and saved history entries return to Inicio without breaking traversal',async()=>{
+  for(const profile of ['rocio','alejandra']){
+    assert.deepEqual(normalizePlatformRoute({tab:'Mi camino'},profile),route('Inicio'));
+    assert.deepEqual(platformRouteFromHash('#camino',profile),route('Inicio'));
+    assert.equal(platformRouteHash({tab:'Mi camino'}),'#inicio');
+    const direct=fixture({hash:'#camino'});direct.controller.init(profile,'Inicio');
+    assert.deepEqual(direct.routes.at(-1),route('Inicio'));assert.equal(direct.b.win.location.hash,'#inicio');
+    await direct.controller.navigate(route('Practicar'));
+    direct.b.nativeBack();await direct.b.settle();assert.deepEqual(direct.routes.at(-1),route('Inicio'));
+    direct.b.nativeForward();await direct.b.settle();assert.deepEqual(direct.routes.at(-1),route('Practicar'));
+    direct.controller.destroy();
+
+    const restored=fixture();restored.controller.init(profile,'Inicio');await restored.controller.navigate(route('Mis clases'));
+    const legacy=restored.b.win.history.state;legacy.__parHistory.route={tab:'Mi camino'};
+    restored.b.win.history.replaceState(legacy,'','#camino');
+    const length=restored.b.entries.length;restored.controller.destroy();
+    const reloaded=new PlatformHistory(restored.options);reloaded.init(profile,'Inicio');
+    assert.deepEqual(restored.routes.at(-1),route('Inicio'));assert.equal(restored.b.win.location.hash,'#inicio');assert.equal(restored.b.entries.length,length);
+    restored.b.nativeBack();await restored.b.settle();assert.deepEqual(restored.routes.at(-1),route('Inicio'));
+    restored.b.nativeForward();await restored.b.settle();assert.deepEqual(restored.routes.at(-1),route('Inicio'));assert.equal(restored.b.win.location.hash,'#inicio');
+    reloaded.destroy();
+  }
+});
+
 test('exam preparation resource and exercise origins round-trip while legacy origins remain valid',()=>{
   for(const kind of ['resource','activity']){
     const detail={kind,id:kind==='resource'?'ficha-examen-pdf':'a-fracciones',source:'exam-prep',sourceAssignmentId:'encargo-examen'};
@@ -97,12 +121,12 @@ test('initial entry creates one boundary and preserves framework history keys',(
 
 test('Back and Forward traverse tabs and an exact assigned exercise after saving',async()=>{
   const f=fixture();f.controller.init('alejandra','Inicio');
-  await f.controller.navigate(route('Mi camino'));
+  await f.controller.navigate(route('Mis clases'));
   await f.controller.navigate(route('Practicar'));
   await f.controller.navigate(exercise);
   f.controller.back();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Practicar'));
   assert.equal(f.latest.canForward,true);
-  f.controller.back();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Mi camino'));
+  f.controller.back();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Mis clases'));
   f.controller.forward();await f.b.settle();f.controller.forward();await f.b.settle();
   assert.deepEqual(f.routes.at(-1),exercise);assert.equal(f.latest.canForward,false);
   assert.equal(f.flushes.length,7);
@@ -148,11 +172,11 @@ test('rejected Back restores browser position without deleting Forward',async()=
 });
 
 test('rapid native Back presses commit only the latest destination after asynchronous saves',async()=>{
-  const f=fixture();f.controller.init('alejandra','Inicio');await f.controller.navigate(route('Mi camino'));await f.controller.navigate(route('Practicar'));await f.controller.navigate(exercise);
+  const f=fixture();f.controller.init('alejandra','Inicio');await f.controller.navigate(route('Mis clases'));await f.controller.navigate(route('Practicar'));await f.controller.navigate(exercise);
   const wait=deferred();f.setBefore(()=>wait.promise);
   f.b.nativeBack();await f.b.settle();assert.equal(f.latest.busy,true);assert.deepEqual(f.routes.at(-1),exercise);
   f.b.nativeBack();await f.b.settle();wait.resolve();await f.b.settle();
-  assert.deepEqual(f.routes.at(-1),route('Mi camino'));assert.equal(f.latest.busy,false);
+  assert.deepEqual(f.routes.at(-1),route('Mis clases'));assert.equal(f.latest.busy,false);
   f.b.nativeForward();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Practicar'));
 });
 
@@ -229,7 +253,7 @@ test('expiry invalidating the controller during its initial route callback is sa
 });
 
 test('a fresh navigation after Back correctly discards the old Forward branch',async()=>{
-  const f=fixture();f.controller.init('alejandra','Inicio');await f.controller.navigate(route('Mi camino'));await f.controller.navigate(exercise);
+  const f=fixture();f.controller.init('alejandra','Inicio');await f.controller.navigate(route('Mis clases'));await f.controller.navigate(exercise);
   f.b.nativeBack();await f.b.settle();await f.controller.navigate(route('Calendario'));
   assert.equal(f.latest.canForward,false);f.b.nativeBack();await f.b.settle();assert.equal(f.latest.canForward,true);
   f.b.nativeForward();await f.b.settle();assert.deepEqual(f.routes.at(-1),route('Calendario'));

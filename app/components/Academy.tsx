@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronLeft, ChevronRight, Compass, Home, LayoutDashboard, Library, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, ShieldCheck, Sparkles, Sun, Users, X, Bell, NotebookPen, FolderOpen, LockKeyhole, BookOpen, Star, Orbit, Flower2, Rocket } from 'lucide-react';
+import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronLeft, ChevronRight, Home, LayoutDashboard, Library, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, ShieldCheck, Sparkles, Sun, Users, X, Bell, NotebookPen, FolderOpen, LockKeyhole, BookOpen, Star, Orbit, Flower2, Rocket } from 'lucide-react';
 import StudentViews from './StudentViews';
 import TeacherViews from './TeacherViews';
 import CalendarView from './CalendarView';
@@ -18,7 +18,7 @@ import {PlatformNavigationContext} from './PlatformNavigation';
 import './navigation-history.css';
 import {getResultVersion,setResultVersion,storedResultVersion} from '@/lib/client-result-state';
 
-const STUDENT_NAV=[{name:'Inicio',icon:Home},{name:'Mi camino',icon:Compass},{name:'Practicar',icon:Sparkles},{name:'Mis clases',icon:NotebookPen},{name:'Calendario',icon:CalendarDays}];
+const STUDENT_NAV=[{name:'Inicio',icon:Home},{name:'Practicar',icon:Sparkles},{name:'Mis clases',icon:NotebookPen},{name:'Calendario',icon:CalendarDays}];
 const TEACHER_NAV=[{name:'Hoy y esta semana',icon:LayoutDashboard},{name:'Alumnas',icon:Users},{name:'Banco de actividades',icon:FolderOpen},{name:'Biblioteca',icon:Library},{name:'Calendario',icon:CalendarDays}];
 export const formatDate=(v:string,opts:any={day:'numeric',month:'short'})=>v?new Intl.DateTimeFormat('es-ES',opts).format(new Date(v.slice(0,10)+'T12:00:00')):'Sin fecha';
 export function Avatar({id,size='',color,avatar,avatarUrl}:{id:string,size?:string;color?:string;avatar?:string;avatarUrl?:string}){return <ProfileAvatar student={{id,color,avatar,avatarUrl}} size={size==='large'?'large':'small'} className={`avatar avatar-${id} ${size}`}/>}
