@@ -12,7 +12,7 @@ import {prepareUploadFile,UPLOAD_ACCEPT,UPLOAD_HELP} from '@/lib/client-upload';
 import {ACADEMY_START_DATE,madridToday,trackingToday,isTrackingDate} from '@/lib/academy-config';
 import {Avatar,formatDate} from './Academy';
 import {ACTIVITY_SUPPORT_OPTIONS,activitySupportLabel,activitySupportMode} from '@/lib/activity-support';
-import {pdfFileForResource} from '@/lib/resource-files';
+import {compareResourceUploads,pdfFileForResource} from '@/lib/resource-files';
 import {isExamPreparation,examModeLabel} from '@/lib/exam-materials';
 import TeacherEmailNotifications from './TeacherEmailNotifications';
 import MathText from './MathText';
@@ -66,7 +66,10 @@ export default function TeacherViews({data,tab,act,notify,onRefresh}:any){
  useEffect(()=>{setFilter('');setSubject('');setStudentFilter('');setSupportFilter('');setModal(null)},[tab]);
  if(session)return <SimpleSessionEditor key={session.id} initial={session} data={data} act={act} notify={notify} backLabel={tab==="Alumnas"?"Volver a Alumnas":"Volver a mi semana"} back={()=>{restoreSessionFocus.current=true;navigation.back()}}/>;
  const bank=data.activities.filter((a:any)=>isCurrentPractice(a)&&data.students.some((p:any)=>learningContentAllowed(a,p.id))&&(!filter||practiceSearch(`${a.title} ${a.objective}`).includes(practiceSearch(filter)))&&(!subject||a.subject===subject)&&(!studentFilter||learningContentAllowed(a,studentFilter))&&(!supportFilter||activitySupportMode(a.supportMode)===supportFilter)).sort(comparePractice);
- const resources=data.resources.filter((r:any)=>data.students.some((p:any)=>learningContentAllowed(r,p.id))&&(!pdfWorkFilter||(()=>{const pdf=pdfFileForResource(r,data.files||[]);return Boolean(pdf)&&Boolean(pdf?._pdfWorkedAt)===(pdfWorkFilter==='done')})())&&(!filter||practiceSearch(`${r.title} ${r.objective}`).includes(practiceSearch(filter)))&&(!subject||r.subject===subject)&&(!studentFilter||learningContentAllowed(r,studentFilter))&&(!supportFilter||activitySupportMode(r.supportMode)===supportFilter)).sort((a:any,b:any)=>Number(Boolean(pdfFileForResource(b,data.files||[])))-Number(Boolean(pdfFileForResource(a,data.files||[])))||String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
+ const resources=data.resources.filter((r:any)=>data.students.some((p:any)=>learningContentAllowed(r,p.id))&&(!pdfWorkFilter||(()=>{const pdf=pdfFileForResource(r,data.files||[]);return Boolean(pdf)&&Boolean(pdf?._pdfWorkedAt)===(pdfWorkFilter==='done')})())&&(!filter||practiceSearch(`${r.title} ${r.objective}`).includes(practiceSearch(filter)))&&(!subject||r.subject===subject)&&(!studentFilter||learningContentAllowed(r,studentFilter))&&(!supportFilter||activitySupportMode(r.supportMode)===supportFilter)).sort((a:any,b:any)=>{
+  const aPdf=Boolean(pdfFileForResource(a,data.files||[])),bPdf=Boolean(pdfFileForResource(b,data.files||[]));
+  return Number(bPdf)-Number(aPdf)||(aPdf&&bPdf?compareResourceUploads(a,b,data.files||[]):String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
+ });
  const visibleBank=tab==='Banco de actividades'?bank:resources;
  const worksheetActivity=(resource:any)=>worksheetForResource(resource.id,data.activities);
  const createPdfExercise=(resource:any)=>{const file=pdfFileForResource(resource,data.files||[]);if(!file)return;const owner=resource.studentId||file.studentId||null;const duration=Number(resource.duration);setModal({type:'activity',item:{id:crypto.randomUUID(),type:'paper',title:resource.title||'',objective:resource.objective||'',instructions:resource.instructions||resource.description||'Completa la ficha del PDF en tu cuaderno siguiendo sus indicaciones. La revisaremos juntos en clase.',subject:resource.subject||'',skillId:resource.skillId||'',level:resource.level||'',resourceId:resource.id,studentId:owner,suggestedStudentIds:owner?[owner]:resource.suggestedStudentIds||[],supportMode:activitySupportMode(resource.supportMode),materials:file.name||resource.title||'Ficha PDF',checkMethod:'Revisión del trabajo y de la explicación en clase.',hints:[],...(Number.isFinite(duration)&&duration>0?{duration}:{})}})};

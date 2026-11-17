@@ -16,7 +16,7 @@ import { responsesForActivity, responsesForResource, linkedResourceActivity } fr
 import { hasCompletedActivity, needsActivityRetry, type HomeWork } from "./student-home";
 import { hasCompletedAssignment } from '@/lib/activity-completion';
 import { pendingTeacherAssignments, type PendingTeacherWork } from "./student-assignments";
-import { groupResourcesBySource, pdfFileForResource } from "@/lib/resource-files";
+import { compareResourceUploads, groupResourcesBySource, pdfFileForResource } from "@/lib/resource-files";
 import { examModeLabel, isExamPreparation } from '@/lib/exam-materials';
 import { usePlatformNavigation } from './PlatformNavigation';
 import "./student.css";
@@ -141,12 +141,13 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
   visibleActivities.forEach(item => groupedActivities.set(item.subject, [...(groupedActivities.get(item.subject) || []), item]));
   const classResources = resources.filter(item => !isExamPreparation(item));
   const matchingResources = classResources.filter(item => (!resourceSubject || item.subject === resourceSubject) && (!resourceType || item.type === resourceType) && (resourceMode === "Todos" || resourceMode === "Favoritos" && favoriteIds.includes(item.id) || resourceMode === "Elegidos por el docente" && (item.pinned || pinnedIds.includes(item.id))) && (!searchText(resourceSearch) || searchText(`${item.title} ${item.objective}`).includes(searchText(resourceSearch)))).sort((a, b) => (a.id === returnResource ? -1 : b.id === returnResource ? 1 : 0) || Number(Boolean(b.pinned || pinnedIds.includes(b.id))) - Number(Boolean(a.pinned || pinnedIds.includes(a.id))) || Number(favoriteIds.includes(b.id)) - Number(favoriteIds.includes(a.id)) || a.title.localeCompare(b.title, "es"));
-  const returnedResource = returnResource && !matchingResources.some(item => item.id === returnResource) ? classResources.find(item => item.id === returnResource) : undefined;
+  const returnedCandidate = returnResource && !matchingResources.some(item => item.id === returnResource) ? classResources.find(item => item.id === returnResource) : undefined;
+  const returnedResource = returnedCandidate && groupResourcesBySource([returnedCandidate]).external.length ? returnedCandidate : undefined;
   const resourceGroups = groupResourcesBySource([...(returnedResource ? [returnedResource] : []), ...matchingResources], data.files || []);
+  resourceGroups.materials.sort((a, b) => compareResourceUploads(a, b, data.files || []));
   const examResources = resources.filter(item => isExamPreparation(item) && Boolean(pdfFileForResource(item, data.files || [])));
-  const matchingExamResources = examResources.filter(item => !searchText(examSearch) || searchText(`${item.title} ${item.subject || ""}`).includes(searchText(examSearch))).sort((a,b) => (a.id===returnResource?-1:b.id===returnResource?1:0) || sortRecent(a,b) || a.title.localeCompare(b.title,"es"));
-  const returnedExamResource = returnResource && !matchingExamResources.some(item=>item.id===returnResource) ? examResources.find(item=>item.id===returnResource) : undefined;
-  const visibleExamResources = [...(returnedExamResource?[returnedExamResource]:[]), ...matchingExamResources.slice(0,examLimit)];
+  const matchingExamResources = examResources.filter(item => !searchText(examSearch) || searchText(`${item.title} ${item.subject || ""}`).includes(searchText(examSearch))).sort((a,b) => compareResourceUploads(a, b, data.files || []));
+  const visibleExamResources = matchingExamResources.slice(0,examLimit);
   const renderResourceCard = (resource: Item, material: boolean, consulted = false) => {
     const pdf=pdfFileForResource(resource,data.files||[]),history=responsesForResource(resource.id,profile,responses,activities),unread=history.some(item=>item.reviewStatus==="reviewed"&&isUnread(profile,item));
     return <ResourceCard key={resource.id} resource={resource} pdf={pdf} material={material} unread={unread} consulted={consulted} favorite={favoriteIds.includes(resource.id)} busy={favoriteBusy} onFavorite={()=>toggleFavorite(resource.id)} onOpen={()=>openResource(resource)}/>;
@@ -225,8 +226,7 @@ export default function StudentViews({ data, profile, tab, act, notify, onNaviga
         <header className="ss-resource-group-heading"><span className="ss-resource-group-icon" aria-hidden="true"><NotebookPen size={22}/></span><div><h2>Fichas tipo examen</h2><p>PDF para trabajar en clase o por tu cuenta.</p></div></header>
         <label className="sv-search ss-practice-search"><Search size={17} aria-hidden="true"/><input aria-label="Buscar fichas de examen" value={examSearch} onChange={event=>{setExamSearch(event.target.value);setReturnResource("");setExamLimit(6)}} placeholder="Buscar por título o asignatura…"/></label>
         <p className="muted ss-result-count" role="status">{matchingExamResources.length} {matchingExamResources.length===1?"ficha":"fichas"}</p>
-        {returnedExamResource&&<p className="sv-practice-return-note" role="status">Última ficha consultada.</p>}
-        {visibleExamResources.length>0&&<div className="grid-2">{visibleExamResources.map(resource=>renderResourceCard(resource,true,returnedExamResource?.id===resource.id))}</div>}
+        {visibleExamResources.length>0&&<div className="grid-2">{visibleExamResources.map(resource=>renderResourceCard(resource,true))}</div>}
         {!visibleExamResources.length&&<Empty icon={NotebookPen} title={examResources.length?"Sin fichas con esta búsqueda":"Todavía no hay fichas de examen"}>{examResources.length?"Prueba con otro título o asignatura.":"Las fichas que comparta el docente para preparar exámenes aparecerán aquí."}{examSearch&&<><br/><button className="btn secondary sv-practice-clear" onClick={()=>setExamSearch("")}>Limpiar búsqueda</button></>}</Empty>}
         {matchingExamResources.length>examLimit&&<button className="btn secondary" onClick={()=>setExamLimit(value=>value+6)}>Mostrar más fichas de examen</button>}
       </section>}
